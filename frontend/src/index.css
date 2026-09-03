@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Enable class-based dark mode selector strategy for Tailwind CSS v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html, body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 0;
+    overscroll-behavior: none;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+  
+  .overflow-y-auto, .overflow-auto {
+    scrollbar-gutter: stable;
+    overscroll-behavior-y: contain;
+  }
+  
+  html.dark body {
+    background-color: #020617;
+    color: #f8fafc;
+  }
+}

@@ -1,0 +1,52 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temporary uploads / generated files
+**/temp_uploads/
+backend/app/static/generated_images/
+
+# Local JSON database / test data
+backend/app/*.json
+
+# Scratch / diagnostic files
+scratch/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Accidental duplicate backend
+backend/backend/
+
+# Accidental duplicate backend
+backend/backend/
+backend/scratch_test_*.py
+backend/app/webhook_debug.txt
