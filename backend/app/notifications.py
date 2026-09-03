@@ -6,6 +6,13 @@ import json
 import uuid
 import datetime
 import calendar
+import asyncio
+from app.database import (
+    notifications_collection,
+    notification_prefs_collection,
+    users_collection,
+    reminders_collection
+)
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -81,7 +88,6 @@ def create_notification_internal(
     priority: str = "normal",
     idempotency_key: Optional[str] = None
 ) -> Optional[dict]:
-    # Suppress according to preferences unless it's a critical security alert
     type_to_pref = {
         "reminder": "reminders",
         "task": "tasks",
@@ -111,14 +117,12 @@ def create_notification_internal(
         is_critical_security = type == "account_security" and priority == "important"
         is_plan_billing = type == "plan_billing"
         if not is_critical_security and not is_plan_billing and not user_prefs.get(pref_key, True):
-            print(f"Notification type '{type}' suppressed by user preferences.")
             return None
 
     notifications = load_notifications()
     if idempotency_key:
         for n in notifications:
             if n.get("idempotency_key") == idempotency_key and n.get("user_id") == user_id:
-                print(f"Idempotent skip: Notification '{idempotency_key}' already exists for user '{user_id}'")
                 return n
 
     new_notif = {
@@ -135,6 +139,15 @@ def create_notification_internal(
     }
     notifications.insert(0, new_notif)
     save_notifications(notifications)
+    
+    # Fire-and-forget MongoDB insert
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(notifications_collection.insert_one(new_notif.copy()))
+    except Exception:
+        pass
+
     return new_notif
 
 def notify_admins_internal(title: str, message: str, related_module: Optional[str] = None, priority: str = "normal", idempotency_key: Optional[str] = None):
@@ -289,91 +302,27 @@ async def get_notifications(authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
     user_id = user["sub"]
     
-    # Auto-check reminders: Spawn notifications for soon/due/overdue dynamically
-    if os.path.exists(REMINDERS_FILE):
-        try:
-            with open(REMINDERS_FILE, "r", encoding="utf-8") as f:
-                reminders = json.load(f)
-        except:
-            reminders = []
-            
-        now = datetime.datetime.now()
-        notifications = load_notifications()
-        
-        updated = False
-        reminders_updated = False
-        for r in reminders:
-            if r.get("user_id") != user_id or r.get("completed", False):
-                continue
-            try:
-                rem_dt = datetime.datetime.fromisoformat(r["datetime"])
-                diff = rem_dt - now
-                diff_minutes = diff.total_seconds() / 60.0
-                
-                # 1. Overdue/Missed (past due by 10 minutes or more)
-                if diff_minutes <= -10:
-                    if not r.get("notified_overdue", False):
-                        create_notification_internal(
-                            user_id=user_id,
-                            title="Reminder Overdue ⚠️",
-                            message=f"Missed reminder: '{r['title']}' was scheduled for {r['datetime']}.",
-                            type="reminder",
-                            related_module=r["id"],
-                            priority="normal"
-                        )
-                        r["notified_overdue"] = True
-                        r["notified_due"] = True
-                        updated = True
-                        reminders_updated = True
-                # 2. Due now (past due, but by less than 10 minutes)
-                elif diff_minutes <= 0:
-                    if not r.get("notified_due", False):
-                        create_notification_internal(
-                            user_id=user_id,
-                            title="Reminder Due Alert ⏰",
-                            message=f"Your '{r['title']}' reminder is due now.",
-                            type="reminder",
-                            related_module=r["id"],
-                            priority="normal"
-                        )
-                        r["notified_due"] = True
-                        updated = True
-                        reminders_updated = True
-                # 3. Coming soon (due within 15 minutes)
-                elif diff_minutes <= 15:
-                    if not r.get("notified_soon", False):
-                        create_notification_internal(
-                            user_id=user_id,
-                            title="Reminder Coming Soon ⏳",
-                            message=f"Reminder approaching: '{r['title']}' is due in {int(diff_minutes)} minutes.",
-                            type="reminder",
-                            related_module=r["id"],
-                            priority="normal"
-                        )
-                        r["notified_soon"] = True
-                        updated = True
-                        reminders_updated = True
-            except Exception as e:
-                print(f"Failed to check reminder status: {e}")
-                
-        if updated:
-            save_notifications(notifications)
-        if reminders_updated:
-            try:
-                with open(REMINDERS_FILE, "w", encoding="utf-8") as f:
-                    json.dump(reminders, f, indent=2, ensure_ascii=False)
-            except Exception as e:
-                print(f"Failed to save reminders: {e}")
+    # Query MongoDB for user notifications
+    try:
+        cursor = notifications_collection.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+        user_notifs = await cursor.to_list(length=None)
+        if user_notifs:
+            return user_notifs
+    except Exception as e:
+        print("[MongoDB get_notifications error]:", e)
 
-    # Reload and filter user notifications
     notifications = load_notifications()
-    user_notifs = [n for n in notifications if n.get("user_id") == user_id]
-    return user_notifs
+    return [n for n in notifications if n.get("user_id") == user_id]
 
 @router.get("/unread-count")
 async def get_unread_count(authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
     user_id = user["sub"]
+    try:
+        count = await notifications_collection.count_documents({"user_id": user_id, "status": "unread"})
+        return {"unread_count": count}
+    except Exception as e:
+        print("[MongoDB unread-count error]:", e)
     notifications = load_notifications()
     unread_count = sum(1 for n in notifications if n.get("user_id") == user_id and n.get("status") == "unread")
     return {"unread_count": unread_count}
@@ -382,14 +331,19 @@ async def get_unread_count(authorization: Optional[str] = Header(None)):
 async def mark_all_as_read(authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
     user_id = user["sub"]
+    try:
+        await notifications_collection.update_many(
+            {"user_id": user_id, "status": "unread"},
+            {"$set": {"status": "read"}}
+        )
+    except Exception as e:
+        print("[MongoDB read-all error]:", e)
     notifications = load_notifications()
-    
     updated = False
     for n in notifications:
         if n.get("user_id") == user_id and n.get("status") == "unread":
             n["status"] = "read"
             updated = True
-            
     if updated:
         save_notifications(notifications)
         
@@ -398,30 +352,42 @@ async def mark_all_as_read(authorization: Optional[str] = Header(None)):
 @router.put("/{notification_id}/read")
 async def mark_as_read(notification_id: str, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    try:
+        res = await notifications_collection.update_one(
+            {"id": notification_id, "user_id": user["sub"]},
+            {"$set": {"status": "read"}}
+        )
+        if res.matched_count > 0:
+            return {"status": "success", "message": "Notification marked as read"}
+    except Exception as e:
+        print("[MongoDB mark_as_read error]:", e)
+
     notifications = load_notifications()
-    
     found = False
     for n in notifications:
         if n["id"] == notification_id and n["user_id"] == user["sub"]:
             n["status"] = "read"
             found = True
             break
-            
     if not found:
         raise HTTPException(status_code=404, detail="Notification not found")
-        
     save_notifications(notifications)
     return {"status": "success", "message": "Notification marked as read"}
 
 @router.delete("/{notification_id}")
 async def delete_notification(notification_id: str, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    try:
+        res = await notifications_collection.delete_one({"id": notification_id, "user_id": user["sub"]})
+        if res.deleted_count > 0:
+            return {"status": "success", "message": "Notification deleted"}
+    except Exception as e:
+        print("[MongoDB delete_notification error]:", e)
+
     notifications = load_notifications()
-    
     filtered = [n for n in notifications if not (n["id"] == notification_id and n["user_id"] == user["sub"])]
     if len(filtered) == len(notifications):
         raise HTTPException(status_code=404, detail="Notification not found")
-        
     save_notifications(filtered)
     return {"status": "success", "message": "Notification deleted"}
 
@@ -429,6 +395,13 @@ async def delete_notification(notification_id: str, authorization: Optional[str]
 async def get_preferences(authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
     user_id = user["sub"]
+    try:
+        pref_doc = await notification_prefs_collection.find_one({"user_id": user_id}, {"_id": 0})
+        if pref_doc and "preferences" in pref_doc:
+            return pref_doc["preferences"]
+    except Exception as e:
+        print("[MongoDB get_preferences error]:", e)
+
     prefs = load_preferences()
     user_prefs = prefs.get(user_id, {
         "reminders": True,
@@ -447,24 +420,20 @@ async def get_preferences(authorization: Optional[str] = Header(None)):
 async def update_preferences(data: dict, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
     user_id = user["sub"]
-    prefs = load_preferences()
-    
-    current = prefs.get(user_id, {
-        "reminders": True,
-        "tasks": True,
-        "automation": True,
-        "documents_files": True,
-        "image_gen": True,
-        "background_ai": True,
-        "account_security": True,
-        "plan_billing": True,
-        "assistant_updates": True
-    })
-    
+    current = await get_preferences(authorization)
     for k, v in data.items():
         if isinstance(v, bool):
             current[k] = v
-            
+    try:
+        await notification_prefs_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"user_id": user_id, "preferences": current}},
+            upsert=True
+        )
+    except Exception as e:
+        print("[MongoDB update_preferences error]:", e)
+
+    prefs = load_preferences()
     prefs[user_id] = current
     save_preferences(prefs)
     return {"status": "success", "preferences": current}

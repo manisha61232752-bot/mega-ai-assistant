@@ -52,6 +52,18 @@ def save_user_preferences(user_id: str, prefs: Dict[str, Any]):
     all_prefs = load_all_preferences()
     all_prefs[user_id] = prefs
     save_all_preferences(all_prefs)
+    try:
+        from app.database import preferences_collection
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(preferences_collection.update_one(
+                {"user_id": user_id},
+                {"$set": {"user_id": user_id, "preferences": prefs}},
+                upsert=True
+            ))
+    except Exception:
+        pass
 
 STYLE_MAPPINGS = {
     # 1. Supported Modes

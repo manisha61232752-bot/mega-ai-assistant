@@ -42,6 +42,8 @@ class RewriteRequest(BaseModel):
     tone: str
     custom_tone_instruction: Optional[str] = None
 
+from app.database import documents_collection
+
 def load_documents():
     if not os.path.exists(DOCUMENTS_FILE):
         return []
@@ -66,6 +68,13 @@ async def get_user(authorization: Optional[str]):
 @router.get("")
 async def get_all_documents(authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    try:
+        cursor = documents_collection.find({"user_id": user["sub"]}, {"_id": 0})
+        docs = await cursor.to_list(length=None)
+        if docs:
+            return docs
+    except Exception as e:
+        print("[MongoDB get_all_documents error]:", e)
     docs = load_documents()
     return [d for d in docs if d.get("user_id") == user["sub"]]
 
@@ -73,6 +82,12 @@ async def get_all_documents(authorization: Optional[str] = Header(None)):
 @router.get("/{doc_id}")
 async def get_document(doc_id: str, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    try:
+        doc = await documents_collection.find_one({"id": doc_id, "user_id": user["sub"]}, {"_id": 0})
+        if doc:
+            return doc
+    except Exception as e:
+        print("[MongoDB get_document error]:", e)
     docs = load_documents()
     for d in docs:
         if d["id"] == doc_id and d["user_id"] == user["sub"]:
@@ -83,7 +98,6 @@ async def get_document(doc_id: str, authorization: Optional[str] = Header(None))
 @router.post("")
 async def create_document(req: DocumentSchema, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
-    docs = load_documents()
     new_doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["sub"],
@@ -93,21 +107,38 @@ async def create_document(req: DocumentSchema, authorization: Optional[str] = He
         "created_at": datetime.datetime.now().isoformat(),
         "updated_at": datetime.datetime.now().isoformat()
     }
-    docs.insert(0, new_doc)
-    save_documents(docs)
+    try:
+        await documents_collection.insert_one(new_doc.copy())
+    except Exception as e:
+        print("[MongoDB create_document error]:", e)
+        docs = load_documents()
+        docs.insert(0, new_doc)
+        save_documents(docs)
+    new_doc.pop("_id", None)
     return new_doc
 
 # CRUD: Update a document
 @router.put("/{doc_id}")
 async def update_document(doc_id: str, req: DocumentSchema, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    updated_at = datetime.datetime.now().isoformat()
+    try:
+        result = await documents_collection.update_one(
+            {"id": doc_id, "user_id": user["sub"]},
+            {"$set": {"title": req.title, "content": req.content, "type": req.type, "updated_at": updated_at}}
+        )
+        if result.matched_count > 0:
+            doc = await documents_collection.find_one({"id": doc_id, "user_id": user["sub"]}, {"_id": 0})
+            return doc
+    except Exception as e:
+        print("[MongoDB update_document error]:", e)
     docs = load_documents()
     for d in docs:
         if d["id"] == doc_id and d["user_id"] == user["sub"]:
             d["title"] = req.title
             d["content"] = req.content
             d["type"] = req.type
-            d["updated_at"] = datetime.datetime.now().isoformat()
+            d["updated_at"] = updated_at
             save_documents(docs)
             return d
     raise HTTPException(status_code=404, detail="Document not found")
@@ -116,6 +147,12 @@ async def update_document(doc_id: str, req: DocumentSchema, authorization: Optio
 @router.delete("/{doc_id}")
 async def delete_document(doc_id: str, authorization: Optional[str] = Header(None)):
     user = await get_user(authorization)
+    try:
+        result = await documents_collection.delete_one({"id": doc_id, "user_id": user["sub"]})
+        if result.deleted_count > 0:
+            return {"status": "success", "message": "Document deleted"}
+    except Exception as e:
+        print("[MongoDB delete_document error]:", e)
     docs = load_documents()
     filtered = [d for d in docs if not (d["id"] == doc_id and d["user_id"] == user["sub"])]
     if len(filtered) == len(docs):

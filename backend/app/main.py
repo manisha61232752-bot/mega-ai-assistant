@@ -23,6 +23,27 @@ import bcrypt
 import jwt
 from typing import Optional, List
 from app.core.config import settings
+from app.database import (
+    users_collection,
+    chats_collection,
+    subscriptions_collection,
+    usages_collection,
+    memories_collection,
+    notes_collection,
+    tasks_collection,
+    reminders_collection,
+    documents_collection,
+    workflows_collection,
+    workflow_history_collection,
+    notifications_collection,
+    notification_prefs_collection,
+    preferences_collection,
+    knowledge_collection,
+    payments_collection,
+    sub_config_collection,
+    system_settings_collection,
+    audit_logs_collection,
+)
 from app.tools import run_tool
 from app.universal_router import normalize_nlu_message
 from app.notifications import dispatch_subscription_event_notifications
@@ -42,7 +63,318 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_headers=["*"],
     )
 
+
+# Health Check Endpoint for Render / Vercel / Deployment Monitoring
+@app.get("/api/health")
+async def health_check():
+    mongo_status = "disconnected"
+    try:
+        await users_collection.find_one({}, {"_id": 1})
+        mongo_status = "connected"
+    except Exception as e:
+        mongo_status = f"error: {str(e)}"
+    
+    return {
+        "status": "healthy",
+        "service": settings.PROJECT_NAME,
+        "database": mongo_status,
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+
+# --- MONGODB ATLAS ASYNC DATA HELPERS ---
+async def db_load_users() -> list:
+    try:
+        cursor = users_collection.find({}, {"_id": 0})
+        users = await cursor.to_list(length=None)
+        if users:
+            return users
+    except Exception as e:
+        print("[MongoDB db_load_users error]:", e)
+    return load_users()
+
+async def db_find_user_by_id(user_id: str) -> Optional[dict]:
+    try:
+        user = await users_collection.find_one({"id": user_id}, {"_id": 0})
+        if user:
+            return user
+    except Exception as e:
+        print("[MongoDB db_find_user_by_id error]:", e)
+    for u in load_users():
+        if u.get("id") == user_id:
+            return u
+    return None
+
+async def db_find_user_by_email(email: str) -> Optional[dict]:
+    clean_email = email.lower().strip()
+    try:
+        user = await users_collection.find_one({"email": clean_email}, {"_id": 0})
+        if user:
+            return user
+    except Exception as e:
+        print("[MongoDB db_find_user_by_email error]:", e)
+    for u in load_users():
+        if u.get("email", "").lower().strip() == clean_email:
+            return u
+    return None
+
+async def db_save_user(user_doc: dict):
+    user_id = user_doc.get("id")
+    if not user_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in user_doc.items() if k != "_id"}
+        await users_collection.update_one({"id": user_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_user error]:", e)
+    try:
+        users = load_users()
+        idx = next((i for i, u in enumerate(users) if u["id"] == user_id), -1)
+        if idx >= 0:
+            users[idx] = {k: v for k, v in user_doc.items() if k != "_id"}
+        else:
+            users.insert(0, {k: v for k, v in user_doc.items() if k != "_id"})
+        save_users(users)
+    except Exception:
+        pass
+
+async def db_load_chats_for_user(user_id: str) -> list:
+    try:
+        cursor = chats_collection.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+        chats = await cursor.to_list(length=None)
+        if chats:
+            return chats
+    except Exception as e:
+        print("[MongoDB db_load_chats_for_user error]:", e)
+    return [c for c in load_chats() if c.get("user_id") == user_id]
+
+async def db_load_chat_by_id(chat_id: str, user_id: str) -> Optional[dict]:
+    try:
+        chat = await chats_collection.find_one({"id": chat_id, "user_id": user_id}, {"_id": 0})
+        if chat:
+            return chat
+    except Exception as e:
+        print("[MongoDB db_load_chat_by_id error]:", e)
+    for c in load_chats():
+        if c.get("id") == chat_id and c.get("user_id") == user_id:
+            return c
+    return None
+
+async def db_save_chat(chat_doc: dict):
+    chat_id = chat_doc.get("id")
+    if not chat_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in chat_doc.items() if k != "_id"}
+        await chats_collection.update_one({"id": chat_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_chat error]:", e)
+    try:
+        chats = load_chats()
+        idx = next((i for i, c in enumerate(chats) if c["id"] == chat_id), -1)
+        if idx >= 0:
+            chats[idx] = {k: v for k, v in chat_doc.items() if k != "_id"}
+        else:
+            chats.insert(0, {k: v for k, v in chat_doc.items() if k != "_id"})
+        save_chats(chats)
+    except Exception:
+        pass
+
+async def db_delete_chat(chat_id: str, user_id: str) -> bool:
+    deleted = False
+    try:
+        res = await chats_collection.delete_one({"id": chat_id, "user_id": user_id})
+        if res.deleted_count > 0:
+            deleted = True
+    except Exception as e:
+        print("[MongoDB db_delete_chat error]:", e)
+    try:
+        chats = load_chats()
+        filtered = [c for c in chats if not (c.get("id") == chat_id and c.get("user_id") == user_id)]
+        if len(filtered) < len(chats):
+            save_chats(filtered)
+            deleted = True
+    except Exception:
+        pass
+    return deleted
+
+async def db_load_notes_for_user(user_id: str) -> list:
+    try:
+        cursor = notes_collection.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+        notes = await cursor.to_list(length=None)
+        if notes:
+            return notes
+    except Exception as e:
+        print("[MongoDB db_load_notes_for_user error]:", e)
+    return [n for n in load_notes() if n.get("user_id") == user_id]
+
+async def db_save_note(note_doc: dict):
+    note_id = note_doc.get("id")
+    if not note_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in note_doc.items() if k != "_id"}
+        await notes_collection.update_one({"id": note_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_note error]:", e)
+    try:
+        notes = load_notes()
+        idx = next((i for i, n in enumerate(notes) if n.get("id") == note_id), -1)
+        if idx >= 0:
+            notes[idx] = {k: v for k, v in note_doc.items() if k != "_id"}
+        else:
+            notes.insert(0, {k: v for k, v in note_doc.items() if k != "_id"})
+        save_notes(notes)
+    except Exception:
+        pass
+
+async def db_delete_note(note_id: str, user_id: str) -> bool:
+    try:
+        res = await notes_collection.delete_one({"id": note_id, "user_id": user_id})
+        if res.deleted_count > 0:
+            return True
+    except Exception as e:
+        print("[MongoDB db_delete_note error]:", e)
+    notes = load_notes()
+    filtered = [n for n in notes if not (n.get("id") == note_id and n.get("user_id") == user_id)]
+    if len(filtered) < len(notes):
+        save_notes(filtered)
+        return True
+    return False
+
+async def db_load_tasks_for_user(user_id: str) -> list:
+    try:
+        cursor = tasks_collection.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+        tasks = await cursor.to_list(length=None)
+        if tasks:
+            return tasks
+    except Exception as e:
+        print("[MongoDB db_load_tasks_for_user error]:", e)
+    return [t for t in load_tasks() if t.get("user_id") == user_id]
+
+async def db_save_task(task_doc: dict):
+    task_id = task_doc.get("id")
+    if not task_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in task_doc.items() if k != "_id"}
+        await tasks_collection.update_one({"id": task_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_task error]:", e)
+    try:
+        tasks = load_tasks()
+        idx = next((i for i, t in enumerate(tasks) if t.get("id") == task_id), -1)
+        if idx >= 0:
+            tasks[idx] = {k: v for k, v in task_doc.items() if k != "_id"}
+        else:
+            tasks.insert(0, {k: v for k, v in task_doc.items() if k != "_id"})
+        save_tasks(tasks)
+    except Exception:
+        pass
+
+async def db_delete_task(task_id: str, user_id: str) -> bool:
+    try:
+        res = await tasks_collection.delete_one({"id": task_id, "user_id": user_id})
+        if res.deleted_count > 0:
+            return True
+    except Exception as e:
+        print("[MongoDB db_delete_task error]:", e)
+    tasks = load_tasks()
+    filtered = [t for t in tasks if not (t.get("id") == task_id and t.get("user_id") == user_id)]
+    if len(filtered) < len(tasks):
+        save_tasks(filtered)
+        return True
+    return False
+
+async def db_load_reminders_for_user(user_id: str) -> list:
+    try:
+        cursor = reminders_collection.find({"user_id": user_id}, {"_id": 0}).sort("datetime", 1)
+        reminders = await cursor.to_list(length=None)
+        if reminders:
+            return reminders
+    except Exception as e:
+        print("[MongoDB db_load_reminders_for_user error]:", e)
+    return [r for r in load_reminders() if r.get("user_id") == user_id]
+
+async def db_save_reminder(reminder_doc: dict):
+    rem_id = reminder_doc.get("id")
+    if not rem_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in reminder_doc.items() if k != "_id"}
+        await reminders_collection.update_one({"id": rem_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_reminder error]:", e)
+    try:
+        reminders = load_reminders()
+        idx = next((i for i, r in enumerate(reminders) if r.get("id") == rem_id), -1)
+        if idx >= 0:
+            reminders[idx] = {k: v for k, v in reminder_doc.items() if k != "_id"}
+        else:
+            reminders.insert(0, {k: v for k, v in reminder_doc.items() if k != "_id"})
+        save_reminders(reminders)
+    except Exception:
+        pass
+
+async def db_delete_reminder(reminder_id: str, user_id: str) -> bool:
+    try:
+        res = await reminders_collection.delete_one({"id": reminder_id, "user_id": user_id})
+        if res.deleted_count > 0:
+            return True
+    except Exception as e:
+        print("[MongoDB db_delete_reminder error]:", e)
+    reminders = load_reminders()
+    filtered = [r for r in reminders if not (r.get("id") == reminder_id and r.get("user_id") == user_id)]
+    if len(filtered) < len(reminders):
+        save_reminders(filtered)
+        return True
+    return False
+
+async def db_load_memories_for_user(user_id: str) -> list:
+    try:
+        cursor = memories_collection.find({"user_id": user_id}, {"_id": 0}).sort("timestamp", -1)
+        memories = await cursor.to_list(length=None)
+        if memories:
+            return memories
+    except Exception as e:
+        print("[MongoDB db_load_memories_for_user error]:", e)
+    return [m for m in load_memories() if m.get("user_id") == user_id]
+
+async def db_save_memory(memory_doc: dict):
+    mem_id = memory_doc.get("id")
+    if not mem_id:
+        return
+    try:
+        clean_doc = {k: v for k, v in memory_doc.items() if k != "_id"}
+        await memories_collection.update_one({"id": mem_id}, {"$set": clean_doc}, upsert=True)
+    except Exception as e:
+        print("[MongoDB db_save_memory error]:", e)
+    try:
+        memories = load_memories()
+        idx = next((i for i, m in enumerate(memories) if m.get("id") == mem_id), -1)
+        if idx >= 0:
+            memories[idx] = {k: v for k, v in memory_doc.items() if k != "_id"}
+        else:
+            memories.insert(0, {k: v for k, v in memory_doc.items() if k != "_id"})
+        save_memories(memories)
+    except Exception:
+        pass
+
+async def db_delete_memory(memory_id: str, user_id: str) -> bool:
+    try:
+        res = await memories_collection.delete_one({"id": memory_id, "user_id": user_id})
+        if res.deleted_count > 0:
+            return True
+    except Exception as e:
+        print("[MongoDB db_delete_memory error]:", e)
+    memories = load_memories()
+    filtered = [m for m in memories if not (m.get("id") == memory_id and m.get("user_id") == user_id)]
+    if len(filtered) < len(memories):
+        save_memories(filtered)
+        return True
+    return False
+
 class ChatRequest(BaseModel):
+
     chat_id: str
     message: str = ""
     file: Optional[dict] = None
@@ -327,6 +659,18 @@ def save_users(users):
             json.dump(users, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save users:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for u in users:
+                    if u.get("id"):
+                        doc = {k: v for k, v in u.items() if k != "_id"}
+                        await users_collection.update_one({"id": u["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 # User Usage File Storage
 USAGES_FILE = os.path.join(BASE_DIR, "app", "usage.json")
@@ -462,6 +806,18 @@ def save_chats(chats):
             json.dump(chats, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save chats:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for c in chats:
+                    if c.get("id"):
+                        doc = {k: v for k, v in c.items() if k != "_id"}
+                        await chats_collection.update_one({"id": c["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 # Memory File Storage
 MEMORIES_FILE = os.path.join(BASE_DIR, "app", "memories.json")
@@ -481,6 +837,18 @@ def save_memories(memories):
             json.dump(memories, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save memories:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for m in memories:
+                    if m.get("id"):
+                        doc = {k: v for k, v in m.items() if k != "_id"}
+                        await memories_collection.update_one({"id": m["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 ALLOWED_EXTENSIONS = {
     ".pdf", ".docx", ".txt", ".jpg", ".jpeg", ".png", ".webp",
@@ -505,7 +873,7 @@ def extract_text_from_docx(filepath: str) -> str:
 
 # Auth Endpoints
 @app.post("/api/auth/register")
-def register_endpoint(req: RegisterRequest):
+async def register_endpoint(req: RegisterRequest):
     name = req.name.strip()
     email = req.email.strip().lower()
     password = req.password
@@ -517,10 +885,9 @@ def register_endpoint(req: RegisterRequest):
     if "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email format.")
 
-    users = load_users()
-    for u in users:
-        if u["email"] == email:
-            raise HTTPException(status_code=400, detail="Email is already registered.")
+    existing = await db_find_user_by_email(email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email is already registered.")
 
     user_id = f"user-{str(uuid.uuid4())}"
     new_user = {
@@ -529,10 +896,10 @@ def register_endpoint(req: RegisterRequest):
         "email": email,
         "password_hash": hash_password(password),
         "role": "user",
-        "account_type": "FREE"
+        "account_type": "FREE",
+        "member_since": datetime.date.today().isoformat()
     }
-    users.append(new_user)
-    save_users(users)
+    await db_save_user(new_user)
 
     try:
         from app.notifications import create_notification_internal
@@ -566,7 +933,7 @@ def register_endpoint(req: RegisterRequest):
     }
 
 @app.post("/api/auth/login")
-def login_endpoint(req: LoginRequest):
+async def login_endpoint(req: LoginRequest):
     email = req.email.strip().lower()
     password = req.password
 
@@ -574,12 +941,7 @@ def login_endpoint(req: LoginRequest):
         raise HTTPException(status_code=400, detail="Email and password are required.")
 
     print(f"[DIAGNOSTIC] Login request: normalized_email={email}")
-    users = load_users()
-    target_user = None
-    for u in users:
-        if u["email"] == email:
-            target_user = u
-            break
+    target_user = await db_find_user_by_email(email)
 
     user_found = target_user is not None
     pw_verified = False
@@ -625,7 +987,7 @@ def logout_endpoint():
     return {"status": "success"}
 
 @app.post("/api/auth/google")
-def google_login_endpoint(req: GoogleLoginRequest):
+async def google_login_endpoint(req: GoogleLoginRequest):
     email = req.email.strip().lower()
     name = req.name.strip()
     google_id = req.google_id
@@ -634,34 +996,27 @@ def google_login_endpoint(req: GoogleLoginRequest):
     if not email or not name or not google_id:
         raise HTTPException(status_code=400, detail="Missing required Google account parameters.")
 
-    users = load_users()
-    target_user = None
-    for u in users:
-        if u["email"] == email:
-            target_user = u
-            break
+    target_user = await db_find_user_by_email(email)
 
     if target_user:
-        # Link Google account if matched by email
         target_user["google_id"] = google_id
         if avatar and not target_user.get("avatar"):
             target_user["avatar"] = avatar
-        save_users(users)
+        await db_save_user(target_user)
     else:
-        # Register new Google user
         user_id = f"user-{str(uuid.uuid4())}"
         target_user = {
             "id": user_id,
             "name": name,
             "email": email,
-            "password_hash": "", # Linked only via Google OAuth
+            "password_hash": "",
             "google_id": google_id,
             "avatar": avatar or "",
             "role": "user",
-            "account_type": "FREE"
+            "account_type": "FREE",
+            "member_since": datetime.date.today().isoformat()
         }
-        users.append(target_user)
-        save_users(users)
+        await db_save_user(target_user)
 
     user_role = target_user.get("role", "user")
     token = create_access_token(target_user["id"], target_user["email"], target_user["name"], role=user_role)
@@ -1990,56 +2345,49 @@ async def unfavorite_chat(chat_id: str, authorization: Optional[str] = Header(No
 @app.get("/api/chats")
 async def get_chats(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    user_chats = [c for c in chats if c.get("user_id") == user["sub"]]
+    user_chats = await db_load_chats_for_user(user["sub"])
     return user_chats
 
 @app.post("/api/chats")
 async def create_chat(req: CreateChatRequest, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
     chat_id = req.id if req.id else f"session-{str(uuid.uuid4())}"
     new_chat = {
         "id": chat_id,
         "user_id": user["sub"],
-        "title": req.title,
+        "title": req.title or "New Chat",
         "messages": [],
         "pinned": False,
         "updated_at": datetime.datetime.now().isoformat()
     }
-    chats.insert(0, new_chat) # Prepends new chat
-    save_chats(chats)
+    await db_save_chat(new_chat)
     return new_chat
 
 @app.get("/api/chats/{chat_id}")
 async def get_chat(chat_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    for chat in chats:
-        if chat["id"] == chat_id and chat.get("user_id") == user["sub"]:
-            return chat
-    raise HTTPException(status_code=404, detail="Chat not found")
+    chat = await db_load_chat_by_id(chat_id, user["sub"])
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
 
 @app.put("/api/chats/{chat_id}")
 async def rename_chat(chat_id: str, req: RenameChatRequest, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    for chat in chats:
-        if chat["id"] == chat_id and chat.get("user_id") == user["sub"]:
-            chat["title"] = req.title.strip()
-            chat["updated_at"] = datetime.datetime.now().isoformat()
-            save_chats(chats)
-            return chat
-    raise HTTPException(status_code=404, detail="Chat not found")
+    chat = await db_load_chat_by_id(chat_id, user["sub"])
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    chat["title"] = req.title.strip()
+    chat["updated_at"] = datetime.datetime.now().isoformat()
+    await db_save_chat(chat)
+    return chat
 
 @app.delete("/api/chats/{chat_id}")
 async def delete_chat(chat_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    updated_chats = [c for c in chats if not (c["id"] == chat_id and c.get("user_id") == user["sub"])]
-    if len(updated_chats) == len(chats):
+    deleted = await db_delete_chat(chat_id, user["sub"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Chat not found")
-    save_chats(updated_chats)
     return {"status": "success"}
 
 @app.delete("/api/chats/{chat_id}/messages")
@@ -4008,6 +4356,18 @@ def save_notes(notes):
             json.dump(notes, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save notes:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for n in notes:
+                    if n.get("id"):
+                        doc = {k: v for k, v in n.items() if k != "_id"}
+                        await notes_collection.update_one({"id": n["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 def load_tasks():
     if not os.path.exists(TASKS_FILE):
@@ -4024,6 +4384,18 @@ def save_tasks(tasks):
             json.dump(tasks, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save tasks:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for t in tasks:
+                    if t.get("id"):
+                        doc = {k: v for k, v in t.items() if k != "_id"}
+                        await tasks_collection.update_one({"id": t["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 def load_reminders():
     if not os.path.exists(REMINDERS_FILE):
@@ -4040,20 +4412,29 @@ def save_reminders(reminders):
             json.dump(reminders, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print("Failed to save reminders:", e)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            async def _sync():
+                for r in reminders:
+                    if r.get("id"):
+                        doc = {k: v for k, v in r.items() if k != "_id"}
+                        await reminders_collection.update_one({"id": r["id"]}, {"$set": doc}, upsert=True)
+            loop.create_task(_sync())
+    except Exception:
+        pass
 
 # Notes CRUD Endpoints
 @app.get("/api/notes")
 async def get_notes(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    notes = load_notes()
-    matching = [n for n in notes if n.get("user_id") == user["sub"]]
-    print(f"[DIAGNOSTIC] get_notes for user_id={user['sub']}: found {len(matching)} notes in database out of {len(notes)} total notes.")
-    return matching
+    notes = await db_load_notes_for_user(user["sub"])
+    return notes
 
 @app.post("/api/notes")
 async def create_note(req: NoteSchema, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    notes = load_notes()
     new_note = {
         "id": str(uuid.uuid4()),
         "user_id": user["sub"],
@@ -4063,8 +4444,7 @@ async def create_note(req: NoteSchema, authorization: Optional[str] = Header(Non
         "created_at": datetime.datetime.now().isoformat(),
         "updated_at": datetime.datetime.now().isoformat()
     }
-    notes.insert(0, new_note)
-    save_notes(notes)
+    await db_save_note(new_note)
     print(f"[DIAGNOSTIC] create_note for user_id={user['sub']}: note_id={new_note['id']}, title='{new_note['title']}'. Total notes in DB now: {len(notes)}.")
     try:
         from app.knowledge_engine import add_knowledge_entry
@@ -4083,38 +4463,35 @@ async def create_note(req: NoteSchema, authorization: Optional[str] = Header(Non
 @app.put("/api/notes/{note_id}")
 async def update_note(note_id: str, req: NoteSchema, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    notes = load_notes()
+    notes = await db_load_notes_for_user(user["sub"])
     for n in notes:
         if n["id"] == note_id and n["user_id"] == user["sub"]:
             n["title"] = req.title
             n["content"] = req.content
             n["pinned"] = req.pinned
             n["updated_at"] = datetime.datetime.now().isoformat()
-            save_notes(notes)
+            await db_save_note(n)
             return n
     raise HTTPException(status_code=404, detail="Note not found")
 
 @app.delete("/api/notes/{note_id}")
 async def delete_note(note_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    notes = load_notes()
-    filtered = [n for n in notes if not (n["id"] == note_id and n["user_id"] == user["sub"])]
-    if len(filtered) == len(notes):
+    deleted = await db_delete_note(note_id, user["sub"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Note not found")
-    save_notes(filtered)
     return {"status": "success", "message": "Note deleted"}
 
 # Tasks CRUD Endpoints
 @app.get("/api/tasks")
 async def get_tasks(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    tasks = load_tasks()
-    return [t for t in tasks if t.get("user_id") == user["sub"]]
+    tasks = await db_load_tasks_for_user(user["sub"])
+    return tasks
 
 @app.post("/api/tasks")
 async def create_task(req: TaskSchema, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    tasks = load_tasks()
     new_task = {
         "id": str(uuid.uuid4()),
         "user_id": user["sub"],
@@ -4123,8 +4500,7 @@ async def create_task(req: TaskSchema, authorization: Optional[str] = Header(Non
         "completed": req.completed,
         "created_at": datetime.datetime.now().isoformat()
     }
-    tasks.insert(0, new_task)
-    save_tasks(tasks)
+    await db_save_task(new_task)
     try:
         from app.knowledge_engine import add_knowledge_entry
         add_knowledge_entry(
@@ -4153,14 +4529,14 @@ async def create_task(req: TaskSchema, authorization: Optional[str] = Header(Non
 @app.put("/api/tasks/{task_id}")
 async def update_task(task_id: str, req: TaskSchema, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    tasks = load_tasks()
+    tasks = await db_load_tasks_for_user(user["sub"])
     for t in tasks:
         if t["id"] == task_id and t["user_id"] == user["sub"]:
             was_completed = t.get("completed", False)
             t["title"] = req.title
             t["priority"] = req.priority
             t["completed"] = req.completed
-            save_tasks(tasks)
+            await db_save_task(t)
             
             try:
                 from app.notifications import create_notification_internal
@@ -4189,19 +4565,17 @@ async def update_task(task_id: str, req: TaskSchema, authorization: Optional[str
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    tasks = load_tasks()
-    filtered = [t for t in tasks if not (t["id"] == task_id and t["user_id"] == user["sub"])]
-    if len(filtered) == len(tasks):
+    deleted = await db_delete_task(task_id, user["sub"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
-    save_tasks(filtered)
     return {"status": "success", "message": "Task deleted"}
 
 # Reminders CRUD Endpoints
 @app.get("/api/reminders")
 async def get_reminders(authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    reminders = load_reminders()
-    return [r for r in reminders if r.get("user_id") == user["sub"]]
+    reminders = await db_load_reminders_for_user(user["sub"])
+    return reminders
 
 @app.post("/api/reminders")
 async def create_reminder(req: ReminderSchema, authorization: Optional[str] = Header(None)):
@@ -4217,7 +4591,6 @@ async def create_reminder(req: ReminderSchema, authorization: Optional[str] = He
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid date & time format.")
 
-    reminders = load_reminders()
     new_reminder = {
         "id": str(uuid.uuid4()),
         "user_id": user["sub"],
@@ -4231,8 +4604,7 @@ async def create_reminder(req: ReminderSchema, authorization: Optional[str] = He
         "created_at": datetime.datetime.now().isoformat(),
         "updated_at": datetime.datetime.now().isoformat()
     }
-    reminders.insert(0, new_reminder)
-    save_reminders(reminders)
+    await db_save_reminder(new_reminder)
     try:
         from app.knowledge_engine import add_knowledge_entry
         add_knowledge_entry(
@@ -4289,11 +4661,9 @@ async def update_reminder(reminder_id: str, req: ReminderSchema, authorization: 
 @app.delete("/api/reminders/{reminder_id}")
 async def delete_reminder(reminder_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    reminders = load_reminders()
-    filtered = [r for r in reminders if not (r["id"] == reminder_id and r["user_id"] == user["sub"])]
-    if len(filtered) == len(reminders):
+    deleted = await db_delete_reminder(reminder_id, user["sub"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Reminder not found")
-    save_reminders(filtered)
     return {"status": "success", "message": "Reminder deleted"}
 
 import asyncio
