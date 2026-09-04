@@ -1,3 +1,4 @@
+import os
 import json
 from typing import List, Union
 from pydantic import field_validator
@@ -28,7 +29,10 @@ class Settings(BaseSettings):
         return v
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(
+            os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+            ".env"
+        ),
         env_ignore_empty=True,
         extra="ignore"
     )

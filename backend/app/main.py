@@ -3535,7 +3535,9 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         return {"reply": reply_text, "sources": None, "agent": "General"}
 
     print(f"[NO TOOL MATCHED] falling back to Gemini for query: '{request.message.encode('utf-8', errors='ignore').decode('utf-8')}'")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
+    raw_model = (settings.GEMINI_MODEL or "gemini-flash-latest").strip().strip("'\"")
+    clean_model = raw_model[7:] if raw_model.startswith("models/") else raw_model
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={settings.GEMINI_API_KEY}"
     
     parts = []
     
@@ -3894,7 +3896,16 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     
     # Always append the last 6 conversation turns for reference resolution and NLU context
     if active_chat.get("messages"):
-        relevant_messages = [m for m in active_chat.get("messages", []) if m.get("text") and not m.get("text").startswith("Tool Executed:")]
+        error_keywords = [
+            "returned an error", "rate limit", "timed out", "quota", "unavailable",
+            "invalid gemini api", "not authorized", "please set a valid gemini_api_key"
+        ]
+        
+        relevant_messages = [
+            m for m in active_chat.get("messages", [])
+            if m.get("text") and not m.get("text").startswith("Tool Executed:")
+            and not any(err_kw in m.get("text", "").lower() for err_kw in error_keywords)
+        ]
         
         # If context restoration is active, prioritize the historical messages from the target agent
         if restored_agent_key:
@@ -3920,21 +3931,44 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         else:
             final_messages = relevant_messages[-6:]
             
+        history_turns = []
         last_role = None
         for msg in final_messages:
             role = "user" if msg["sender"] == "user" else "model"
             text_str = msg.get("text", "").strip()
-            if text_str and role != last_role and not any(err_kw in text_str.lower() for err_kw in ["rate limit", "timed out", "quota", "unavailable"]):
-                contents.append({
+            if text_str and role != last_role:
+                history_turns.append({
                     "role": role,
                     "parts": [{"text": text_str}]
                 })
                 last_role = role
+                
+        # Enforce Gemini role constraints:
+        # 1. First turn in contents MUST be 'user'
+        while history_turns and history_turns[0]["role"] != "user":
+            history_turns.pop(0)
             
+        # 2. Last turn in history before adding new user query MUST be 'model' (to avoid user -> user)
+        while history_turns and history_turns[-1]["role"] != "model":
+            history_turns.pop()
+            
+        contents.extend(history_turns)
+
+    # Clean active query parts to ensure no empty text parts exist
+    clean_parts = []
+    for p in parts:
+        if "inline_data" in p:
+            clean_parts.append(p)
+        elif "text" in p and p["text"] and p["text"].strip():
+            clean_parts.append({"text": p["text"].strip()})
+
+    if not clean_parts:
+        clean_parts = [{"text": request.message.strip() if request.message and request.message.strip() else "Hello"}]
+
     # Finally, append the active query turn
     contents.append({
         "role": "user",
-        "parts": parts
+        "parts": clean_parts
     })
 
     payload = {
@@ -4037,6 +4071,8 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
             reply_text = "AI provider is temporarily unavailable."
         elif response.status_code != 200:
             is_gemini_error = True
+            err_body = response.text[:500].replace(settings.GEMINI_API_KEY, "[HIDDEN]") if settings.GEMINI_API_KEY else response.text[:500]
+            print(f"[GEMINI UPSTREAM ERROR] Status Code: {response.status_code} | Body: {err_body}")
             reply_text = f"The AI service returned an error ({response.status_code}). Please try again."
         else:
             data = response.json()
