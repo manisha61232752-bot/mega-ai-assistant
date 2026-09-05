@@ -326,6 +326,19 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
 
         return messages
 
+    def _resolve_request_url(self, raw_base_url: str, provider_type: str) -> str:
+        base_url = (raw_base_url or "").strip().rstrip("/")
+        if base_url.endswith("/chat/completions"):
+            base_url = base_url[:-17].rstrip("/")
+
+        if provider_type == "groq":
+            if "api.openai.com" in base_url or not base_url or base_url.startswith("https://api.groq.com"):
+                base_url = "https://api.groq.com/openai/v1"
+        elif not base_url:
+            base_url = "https://api.openai.com/v1"
+
+        return f"{base_url}/chat/completions"
+
     async def generate_response(
         self,
         prompt: str,
@@ -352,14 +365,7 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
                 is_retryable=False
             )
 
-        base_url = (settings.FALLBACK_API_BASE_URL or "").rstrip("/")
-        # Auto-correct base URL for Groq if set to OpenAI default URL or empty
-        if provider_type == "groq" and ("api.openai.com" in base_url or not base_url or base_url == "https://api.openai.com/v1"):
-            base_url = "https://api.groq.com/openai/v1"
-        elif not base_url:
-            base_url = "https://api.openai.com/v1"
-
-        url = f"{base_url}/chat/completions"
+        url = self._resolve_request_url(settings.FALLBACK_API_BASE_URL, provider_type)
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
