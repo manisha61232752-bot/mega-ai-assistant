@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     AI_PRIMARY_PROVIDER: str = "gemini"
     AI_FALLBACK_PROVIDER: str = ""  # e.g. "openai", "openrouter", "groq"
     FALLBACK_API_KEY: str = ""
-    FALLBACK_MODEL: str = "gpt-4o-mini"
+    FALLBACK_MODEL: str = "llama-3.1-8b-instant"
     FALLBACK_API_BASE_URL: str = "https://api.openai.com/v1"
     
     AI_MAX_RETRIES: int = 2

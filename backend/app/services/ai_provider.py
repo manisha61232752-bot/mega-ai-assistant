@@ -334,7 +334,7 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
     ) -> Dict[str, Any]:
         api_key = (settings.FALLBACK_API_KEY or "").strip()
         provider_type = (settings.AI_FALLBACK_PROVIDER or "").lower().strip()
-        model_name = (settings.FALLBACK_MODEL or "llama-3.3-70b-versatile").strip()
+        model_name = (settings.FALLBACK_MODEL or "llama-3.1-8b-instant").strip()
 
         # Auto-infer provider type if unconfigured but key/model is present
         if not provider_type:
