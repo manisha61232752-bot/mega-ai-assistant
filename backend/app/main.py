@@ -75,10 +75,16 @@ async def health_check():
     except Exception as e:
         mongo_status = f"error: {str(e)}"
     
+    from app.services.ai_provider import global_health_tracker
+    ai_health = global_health_tracker.get_status()
+
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
         "database": mongo_status,
+        "ai_primary_provider": settings.AI_PRIMARY_PROVIDER,
+        "ai_fallback_configured": bool(settings.AI_FALLBACK_PROVIDER and settings.FALLBACK_API_KEY),
+        "ai_health_status": ai_health,
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
 
@@ -4049,42 +4055,19 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         msg += "\n\n**Next Best Action**: Wait a moment for rate limits to clear, or continue querying using local command lines."
         return msg
 
-    gemini_calls_count = 0
-    is_gemini_error = False
-    try:
-        gemini_calls_count += 1
-        def _call_gemini():
-            return _http_session.post(url, json=payload, timeout=(5.0, 30.0))
-            
-        response = await asyncio.to_thread(_call_gemini)
-            
-        if response.status_code == 429:
-            is_gemini_error = True
-            reply_text = "AI provider rate limit/quota has been reached. Please try again later."
-        elif response.status_code == 401:
-            is_gemini_error = True
-            reply_text = "Invalid Gemini API authentication."
-        elif response.status_code == 403:
-            is_gemini_error = True
-            reply_text = "Gemini API access is not authorized."
-        elif response.status_code == 503:
-            is_gemini_error = True
-            reply_text = "AI provider is temporarily unavailable."
-        elif response.status_code != 200:
-            is_gemini_error = True
-            err_body = response.text[:500].replace(settings.GEMINI_API_KEY, "[HIDDEN]") if settings.GEMINI_API_KEY else response.text[:500]
-            print(f"[GEMINI UPSTREAM ERROR] Status Code: {response.status_code} | Body: {err_body}")
-            reply_text = f"The AI service returned an error ({response.status_code}). Please try again."
-        else:
-            data = response.json()
-            reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            
-    except requests.exceptions.Timeout:
-        is_gemini_error = True
-        reply_text = "AI service request timed out. Please try again."
-    except Exception as exc:
-        is_gemini_error = True
-        reply_text = "The AI service is temporarily unavailable or taking too long to respond. Please try again."
+    is_personalized_ctx = bool(request.file or relevant_memories or user_mem or tool_outputs or pref_context)
+    
+    from app.services.ai_provider import global_ai_orchestrator
+    ai_result = await global_ai_orchestrator.generate_with_resilience(
+        req_id=req_id,
+        user_id=user["sub"],
+        prompt=request.message,
+        payload=payload,
+        is_personalized=is_personalized_ctx
+    )
+    
+    reply_text = ai_result.get("text", "AI provider is temporarily unavailable.")
+    is_gemini_error = ai_result.get("error", False)
 
     # If error occurred but a local tool output was generated, present tool output cleanly
     if is_gemini_error and tool_outputs:
@@ -5267,5 +5250,35 @@ async def update_admin_subscription_config(req: dict, admin_user: dict = Depends
         )
         
     return {"status": "success", "message": "Subscription settings updated successfully.", "config": new_config}
+
+
+@app.get("/api/health/ai")
+async def ai_health_diagnostics():
+    from app.services.ai_provider import global_health_tracker
+    health_status = global_health_tracker.get_status()
+    
+    return {
+        "status": "healthy" if health_status.get("gemini", {}).get("healthy", True) else "degraded",
+        "primary_provider": {
+            "name": settings.AI_PRIMARY_PROVIDER,
+            "model": settings.GEMINI_MODEL,
+            "key_configured": bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE"),
+            "health": health_status.get("gemini", {})
+        },
+        "fallback_provider": {
+            "name": settings.AI_FALLBACK_PROVIDER or "none",
+            "model": settings.FALLBACK_MODEL if settings.AI_FALLBACK_PROVIDER else "none",
+            "configured": bool(settings.AI_FALLBACK_PROVIDER and settings.FALLBACK_API_KEY),
+            "key_configured": bool(settings.FALLBACK_API_KEY),
+            "health": health_status.get("fallback", {})
+        },
+        "resilience_settings": {
+            "max_retries": settings.AI_MAX_RETRIES,
+            "request_timeout_seconds": settings.AI_REQUEST_TIMEOUT_SECONDS,
+            "cooldown_seconds": settings.AI_PROVIDER_COOLDOWN_SECONDS,
+            "cache_enabled": settings.AI_CACHE_ENABLED,
+            "cache_ttl_seconds": settings.AI_CACHE_TTL_SECONDS
+        }
+    }
 
 

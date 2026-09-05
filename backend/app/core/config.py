@@ -11,6 +11,19 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-flash-latest"
     MONGODB_URI: str = ""
     
+    # AI Provider & Resilience Configurations
+    AI_PRIMARY_PROVIDER: str = "gemini"
+    AI_FALLBACK_PROVIDER: str = ""  # e.g. "openai", "openrouter", "groq"
+    FALLBACK_API_KEY: str = ""
+    FALLBACK_MODEL: str = "gpt-4o-mini"
+    FALLBACK_API_BASE_URL: str = "https://api.openai.com/v1"
+    
+    AI_MAX_RETRIES: int = 2
+    AI_REQUEST_TIMEOUT_SECONDS: float = 30.0
+    AI_PROVIDER_COOLDOWN_SECONDS: float = 30.0
+    AI_CACHE_ENABLED: bool = True
+    AI_CACHE_TTL_SECONDS: int = 300
+    
     # CORS Origins - parsed as list from environment variable JSON or comma-separated string
     BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"]
 

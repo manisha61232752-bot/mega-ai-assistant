@@ -4,6 +4,7 @@ import calendar
 import urllib.parse
 import uuid
 import os
+import time
 import httpx
 import json
 from typing import List, Dict, Any, Optional
@@ -360,10 +361,16 @@ async def generate_execution_plan(message: str, api_key: str, model: str, histor
     }
     
     try:
-        async with httpx.AsyncClient() as client:
-            res = await client.post(url, json=payload, timeout=8.0)
-        if res.status_code == 200:
-            text = res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        from app.services.ai_provider import global_ai_orchestrator
+        ai_res = await global_ai_orchestrator.generate_with_resilience(
+            req_id=f"plan_{int(time.time())}",
+            user_id="system",
+            prompt=message,
+            payload=payload,
+            is_personalized=False
+        )
+        text = ai_res.get("text", "").strip()
+        if text and not ai_res.get("error"):
             if "```" in text:
                 text = text.replace("```json", "").replace("```", "").strip()
             return json.loads(text)
