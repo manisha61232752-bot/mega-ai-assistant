@@ -160,11 +160,15 @@ def test_url_normalization():
     assert url == "https://api.openai.com/v1/chat/completions"
     assert url.count("/chat/completions") == 1
 
-    # 3. Groq base URL normalization test cases
+    # 3. Groq base URL normalization test cases (both HTTP and HTTPS)
     groq_cases = [
+        "http://api.groq.com",
         "https://api.groq.com",
+        "http://api.groq.com/v1",
         "https://api.groq.com/v1",
+        "http://api.groq.com/openai/v1",
         "https://api.groq.com/openai/v1",
+        "http://api.groq.com/openai/v1/chat/completions",
         "https://api.groq.com/openai/v1/chat/completions",
         "https://api.openai.com/v1",  # OpenAI default fallback with groq provider
         "",  # Empty base URL
@@ -178,6 +182,31 @@ def test_url_normalization():
     print("[PASSED] URL Normalization Test")
 
 
+async def test_safe_error_payload():
+    # Verify that when providers fail, no secrets or raw exception tracebacks leak to client
+    settings.AI_PRIMARY_PROVIDER = "gemini"
+    settings.GEMINI_API_KEY = "invalid_gemini_key_secret_123"
+    settings.AI_FALLBACK_PROVIDER = "groq"
+    settings.FALLBACK_API_KEY = "gsk_invalid_groq_key_secret_456"
+    settings.AI_MAX_RETRIES = 0
+
+    res = await global_ai_orchestrator.generate_with_resilience(
+        req_id="test_safe_err_001",
+        user_id="test_user_safe",
+        prompt="Test prompt for safe error",
+        payload={"contents": [{"parts": [{"text": "Test"}]}]},
+        is_personalized=False
+    )
+
+    assert res.get("error") is True
+    assert res.get("provider") == "none"
+    assert "text" in res
+    assert "invalid_gemini_key_secret_123" not in res["text"]
+    assert "gsk_invalid_groq_key_secret_456" not in res["text"]
+    assert "Traceback" not in res["text"]
+    print("[PASSED] Safe Error Payload Test")
+
+
 if __name__ == "__main__":
     test_secret_masking()
     test_error_classification()
@@ -186,5 +215,5 @@ if __name__ == "__main__":
     test_url_normalization()
     asyncio.run(test_deduplication())
     asyncio.run(test_ai_orchestrator_mock_failover())
+    asyncio.run(test_safe_error_payload())
     print("\nALL AI RESILIENCE TESTS PASSED 100%!")
-

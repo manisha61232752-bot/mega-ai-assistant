@@ -332,7 +332,7 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
             base_url = base_url[:-17].rstrip("/")
 
         if provider_type == "groq":
-            if "api.openai.com" in base_url or not base_url or base_url.startswith("https://api.groq.com"):
+            if "api.openai.com" in base_url or not base_url or "groq.com" in base_url:
                 base_url = "https://api.groq.com/openai/v1"
         elif not base_url:
             base_url = "https://api.openai.com/v1"
@@ -512,7 +512,7 @@ class AIOrchestrator:
                     except AIProviderError as err:
                         last_error = err
                         global_health_tracker.record_failure(primary_name, err.is_retryable)
-                        print(mask_secrets(f"[AI PRIMARY] provider=gemini status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt}"))
+                        print(mask_secrets(f"[AI PRIMARY] provider=gemini status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt} error={err.message}"))
 
                         if not err.is_retryable:
                             print(mask_secrets(f"[AI RETRY STOP] Non-retryable error ({err.category.value}). Aborting primary retries."))
@@ -546,8 +546,9 @@ class AIOrchestrator:
                         return result
 
                     except AIProviderError as err:
+                        last_error = err
                         global_health_tracker.record_failure(fallback_name, err.is_retryable)
-                        print(mask_secrets(f"[AI FALLBACK] provider={effective_provider} status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt}"))
+                        print(mask_secrets(f"[AI FALLBACK] provider={effective_provider} status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt} error={err.message}"))
 
                         if not err.is_retryable:
                             break
@@ -557,7 +558,8 @@ class AIOrchestrator:
                             await asyncio.sleep(backoff_seconds)
 
             # --- ALL PROVIDERS FAILED ---
-            print(mask_secrets(f"[AI RESPONSE] provider=none success=false reason=all_providers_exhausted"))
+            last_err_msg = last_error.message if last_error else "none"
+            print(mask_secrets(f"[AI RESPONSE] provider=none success=false reason=all_providers_exhausted last_error={last_err_msg}"))
             
             # Formulate safe user-facing message
             if last_error and last_error.category in (AIErrorCategory.UNAUTHORIZED, AIErrorCategory.FORBIDDEN, AIErrorCategory.NOT_FOUND):
