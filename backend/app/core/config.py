@@ -25,7 +25,13 @@ class Settings(BaseSettings):
     AI_CACHE_TTL_SECONDS: int = 300
     
     # CORS Origins - parsed as list from environment variable JSON or comma-separated string
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "https://mega-ai-assistant.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "*"
+    ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod

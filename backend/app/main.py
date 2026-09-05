@@ -54,15 +54,23 @@ app = FastAPI(
 )
 
 # CORS configurations
-if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS if "*" not in str(origin) or str(origin) == "*"],
-        allow_origin_regex=r"https://.*\.vercel\.app",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+cors_origins = [str(origin).strip() for origin in settings.BACKEND_CORS_ORIGINS if origin and str(origin).strip() != "*"]
+prod_vercel_origin = "https://mega-ai-assistant.vercel.app"
+if prod_vercel_origin not in cors_origins:
+    cors_origins.append(prod_vercel_origin)
+
+for loc_origin in ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]:
+    if loc_origin not in cors_origins:
+        cors_origins.append(loc_origin)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Health Check Endpoint for Render / Vercel / Deployment Monitoring
@@ -2904,6 +2912,7 @@ async def extract_and_save_memories_from_message(user_id: str, message: str):
 async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Header(None)):
     req_start_time = time.time()
     req_id = f"req-{str(uuid.uuid4())[:8]}"
+    gemini_calls_count = 1
     tool_info = None
     tool_outputs = {}
     user = await get_current_user(authorization)
@@ -4465,7 +4474,7 @@ async def create_note(req: NoteSchema, authorization: Optional[str] = Header(Non
         "updated_at": datetime.datetime.now().isoformat()
     }
     await db_save_note(new_note)
-    print(f"[DIAGNOSTIC] create_note for user_id={user['sub']}: note_id={new_note['id']}, title='{new_note['title']}'. Total notes in DB now: {len(notes)}.")
+    print(f"[DIAGNOSTIC] create_note for user_id={user['sub']}: note_id={new_note['id']}, title='{new_note['title']}'.")
     try:
         from app.knowledge_engine import add_knowledge_entry
         add_knowledge_entry(
