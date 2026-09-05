@@ -13,5 +13,13 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: "gemini-flash-latest"
+      - key: AI_FALLBACK_PROVIDER
+        value: "groq"
+      - key: FALLBACK_API_KEY
+        sync: false
+      - key: FALLBACK_MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: FALLBACK_API_BASE_URL
+        value: "https://api.groq.com/openai/v1"
       - key: BACKEND_CORS_ORIGINS
         value: "[\"https://mega-ai-assistant.vercel.app\", \"https://mega-ai-assistant-8p0ro4rxa-manisha61232752-3380s-projects.vercel.app\", \"http://localhost:5173\", \"http://127.0.0.1:5173\"]"

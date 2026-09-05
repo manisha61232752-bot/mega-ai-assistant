@@ -319,7 +319,7 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
             parts = turn.get("parts", [])
             text_acc = []
             for p in parts:
-                if "text" in p and p["text"]:
+                if isinstance(p, dict) and "text" in p and p["text"]:
                     text_acc.append(p["text"])
             if text_acc:
                 messages.append({"role": role, "content": "\n".join(text_acc)})
@@ -332,8 +332,18 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
         payload: Dict[str, Any],
         timeout: float
     ) -> Dict[str, Any]:
-        api_key = settings.FALLBACK_API_KEY
-        if not api_key or not settings.AI_FALLBACK_PROVIDER:
+        api_key = (settings.FALLBACK_API_KEY or "").strip()
+        provider_type = (settings.AI_FALLBACK_PROVIDER or "").lower().strip()
+        model_name = (settings.FALLBACK_MODEL or "llama-3.3-70b-versatile").strip()
+
+        # Auto-infer provider type if unconfigured but key/model is present
+        if not provider_type:
+            if api_key.startswith("gsk_") or "llama" in model_name.lower() or "mixtral" in model_name.lower() or "gemma" in model_name.lower():
+                provider_type = "groq"
+            else:
+                provider_type = "openai"
+
+        if not api_key:
             raise AIProviderError(
                 message="Fallback AI provider is not configured or missing FALLBACK_API_KEY.",
                 provider=self.name,
@@ -342,7 +352,13 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
                 is_retryable=False
             )
 
-        base_url = settings.FALLBACK_API_BASE_URL.rstrip("/")
+        base_url = (settings.FALLBACK_API_BASE_URL or "").rstrip("/")
+        # Auto-correct base URL for Groq if set to OpenAI default URL or empty
+        if provider_type == "groq" and ("api.openai.com" in base_url or not base_url or base_url == "https://api.openai.com/v1"):
+            base_url = "https://api.groq.com/openai/v1"
+        elif not base_url:
+            base_url = "https://api.openai.com/v1"
+
         url = f"{base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -350,8 +366,11 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
         }
 
         openai_messages = self._convert_gemini_payload_to_openai_messages(payload)
+        if not openai_messages and prompt:
+            openai_messages = [{"role": "user", "content": prompt}]
+
         fallback_payload = {
-            "model": settings.FALLBACK_MODEL,
+            "model": model_name,
             "messages": openai_messages,
             "temperature": 0.7
         }
@@ -367,8 +386,8 @@ class OpenAICompatibleFallbackProvider(BaseAIProvider):
                 text = data["choices"][0]["message"]["content"]
                 return {
                     "text": text,
-                    "provider": f"fallback ({settings.AI_FALLBACK_PROVIDER})",
-                    "model": settings.FALLBACK_MODEL,
+                    "provider": f"fallback ({provider_type})",
+                    "model": model_name,
                     "latency": round(latency, 2),
                     "raw_response": data
                 }
@@ -417,6 +436,12 @@ class AIOrchestrator:
         self.primary_provider = GeminiProvider()
         self.fallback_provider = OpenAICompatibleFallbackProvider()
 
+    def is_fallback_configured(self) -> bool:
+        api_key = (settings.FALLBACK_API_KEY or "").strip()
+        provider = (settings.AI_FALLBACK_PROVIDER or "").strip()
+        model = (settings.FALLBACK_MODEL or "").strip()
+        return bool(api_key and (provider or api_key.startswith("gsk_") or "llama" in model.lower() or "groq" in model.lower()))
+
     def _generate_cache_key(self, user_id: str, prompt: str, is_personalized: bool) -> Optional[str]:
         if is_personalized or not prompt:
             return None
@@ -460,18 +485,19 @@ class AIOrchestrator:
             use_primary = global_health_tracker.is_healthy(primary_name)
 
             if not use_primary:
-                print(mask_secrets(f"[AI REQUEST] Req ID: {req_id} | Primary 'gemini' in COOLDOWN -> Attempting Fallback directly."))
+                print(mask_secrets(f"[AI PRIMARY] provider=gemini state=cooldown trigger_fallback=true"))
 
             last_error: Optional[AIProviderError] = None
 
             # --- ATTEMPT 1: Primary Gemini Provider ---
             if use_primary:
                 for attempt in range(1, max_retries + 2):
-                    print(mask_secrets(f"[AI REQUEST] Req ID: {req_id} | Provider: {primary_name} | Model: {settings.GEMINI_MODEL} | Attempt: {attempt}"))
+                    print(mask_secrets(f"[AI PRIMARY] provider=gemini model={settings.GEMINI_MODEL} attempt={attempt}"))
                     try:
                         result = await self.primary_provider.generate_response(prompt, payload, timeout=timeout)
                         global_health_tracker.record_success(primary_name)
-                        print(mask_secrets(f"[AI RESULT] Req ID: {req_id} | Provider: {primary_name} | Status: success | Latency: {result['latency']}s"))
+                        print(mask_secrets(f"[AI PRIMARY] provider=gemini status=200 latency={result['latency']}s success=true"))
+                        print(mask_secrets(f"[AI RESPONSE] provider=gemini success=true"))
 
                         if cache_key and result.get("text"):
                             global_ai_cache.set(cache_key, result["text"])
@@ -480,10 +506,10 @@ class AIOrchestrator:
                     except AIProviderError as err:
                         last_error = err
                         global_health_tracker.record_failure(primary_name, err.is_retryable)
-                        print(mask_secrets(f"[AI PROVIDER ERROR] Req ID: {req_id} | Provider: {err.provider} | Status: {err.status_code or 'N/A'} | Category: {err.category.value} | Attempt: {attempt}"))
+                        print(mask_secrets(f"[AI PRIMARY] provider=gemini status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt}"))
 
                         if not err.is_retryable:
-                            print(mask_secrets(f"[AI RETRY STOP] Non-retryable error ({err.category.value}). Aborting retries for {primary_name}."))
+                            print(mask_secrets(f"[AI RETRY STOP] Non-retryable error ({err.category.value}). Aborting primary retries."))
                             break
 
                         if attempt <= max_retries:
@@ -493,17 +519,21 @@ class AIOrchestrator:
                         else:
                             print(mask_secrets(f"[AI RETRY STOP] Max retries reached for {primary_name}."))
 
-            # --- ATTEMPT 2: Fallback Provider (If Primary Failed or in Cooldown) ---
-            has_fallback_config = bool(settings.AI_FALLBACK_PROVIDER and settings.FALLBACK_API_KEY)
+            # --- ATTEMPT 2: Fallback Provider (If Primary Failed, Non-retryable, or in Cooldown) ---
+            has_fallback_config = self.is_fallback_configured()
             if has_fallback_config:
-                print(mask_secrets(f"[FALLBACK] Req ID: {req_id} | Primary: gemini failed/cooldown | Triggering Fallback provider ({settings.AI_FALLBACK_PROVIDER})."))
+                fallback_reason = last_error.category.value if last_error else ("cooldown" if not use_primary else "failed")
+                effective_provider = settings.AI_FALLBACK_PROVIDER or ("groq" if (settings.FALLBACK_API_KEY or "").startswith("gsk_") else "fallback")
+                print(mask_secrets(f"[AI FALLBACK] triggered reason={fallback_reason} provider={effective_provider} attempting=true"))
                 fallback_name = "fallback"
+                
                 for attempt in range(1, max_retries + 2):
-                    print(mask_secrets(f"[AI REQUEST] Req ID: {req_id} | Provider: {fallback_name} ({settings.AI_FALLBACK_PROVIDER}) | Model: {settings.FALLBACK_MODEL} | Attempt: {attempt}"))
+                    print(mask_secrets(f"[AI FALLBACK] provider={effective_provider} model={settings.FALLBACK_MODEL} attempt={attempt}"))
                     try:
                         result = await self.fallback_provider.generate_response(prompt, payload, timeout=timeout)
                         global_health_tracker.record_success(fallback_name)
-                        print(mask_secrets(f"[AI RESULT] Req ID: {req_id} | Provider: {result['provider']} | Status: success | Latency: {result['latency']}s"))
+                        print(mask_secrets(f"[AI FALLBACK] provider={result['provider']} status=200 latency={result['latency']}s success=true"))
+                        print(mask_secrets(f"[AI RESPONSE] provider={result['provider']} success=true"))
 
                         if cache_key and result.get("text"):
                             global_ai_cache.set(cache_key, result["text"])
@@ -511,7 +541,7 @@ class AIOrchestrator:
 
                     except AIProviderError as err:
                         global_health_tracker.record_failure(fallback_name, err.is_retryable)
-                        print(mask_secrets(f"[AI PROVIDER ERROR] Req ID: {req_id} | Provider: {err.provider} | Status: {err.status_code or 'N/A'} | Category: {err.category.value} | Attempt: {attempt}"))
+                        print(mask_secrets(f"[AI FALLBACK] provider={effective_provider} status={err.status_code or 'N/A'} category={err.category.value} attempt={attempt}"))
 
                         if not err.is_retryable:
                             break
@@ -521,7 +551,7 @@ class AIOrchestrator:
                             await asyncio.sleep(backoff_seconds)
 
             # --- ALL PROVIDERS FAILED ---
-            print(mask_secrets(f"[AI ALL PROVIDERS EXHAUSTED] Req ID: {req_id} | All response paths failed."))
+            print(mask_secrets(f"[AI RESPONSE] provider=none success=false reason=all_providers_exhausted"))
             
             # Formulate safe user-facing message
             if last_error and last_error.category in (AIErrorCategory.UNAUTHORIZED, AIErrorCategory.FORBIDDEN, AIErrorCategory.NOT_FOUND):
@@ -542,3 +572,4 @@ class AIOrchestrator:
 
 
 global_ai_orchestrator = AIOrchestrator()
+
