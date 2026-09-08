@@ -8173,14 +8173,16 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
               </svg>
             </div>
-            <span className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
-              Mega Assistant
-            </span>
           </div>
-          {/* Close Sidebar Mobile Trigger */}
+          {/* Close Sidebar Trigger */}
           <button
-            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer"
-            onClick={() => setSidebarOpen(false)}
+            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer transition-all hover:scale-105"
+            onClick={() => {
+              setSidebarOpen(false);
+              localStorage.setItem('mega_sidebar_open', JSON.stringify(false));
+            }}
+            title="Close Workspace"
+            aria-label="Close Workspace"
           >
             <CloseIcon className="w-5 h-5" />
           </button>
@@ -8384,18 +8386,20 @@ export default function App() {
           {/* Left section: Hamburger (☰) + Logo & dropdown arrow */}
           <div className="flex items-center gap-4 relative">
             {/* Hamburger menu trigger */}
-            <button
-              ref={sidebarTriggerRef}
-              onClick={() => {
-                const next = !sidebarOpen;
-                setSidebarOpen(next);
-                localStorage.setItem('mega_sidebar_open', JSON.stringify(next));
-              }}
-              className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer transition-all hover:scale-105"
-              title="Toggle sidebar"
-            >
-              <MenuIcon className="w-5 h-5" />
-            </button>
+            {!sidebarOpen && !['notes', 'tasks', 'reminders', 'documents', 'automation'].includes(activeTab) && (
+              <button
+                ref={sidebarTriggerRef}
+                onClick={() => {
+                  const next = !sidebarOpen;
+                  setSidebarOpen(next);
+                  localStorage.setItem('mega_sidebar_open', JSON.stringify(next));
+                }}
+                className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer transition-all hover:scale-105"
+                title="Toggle sidebar"
+              >
+                <MenuIcon className="w-5 h-5" />
+              </button>
+            )}
             
             {/* Clickable logo + name */}
             <div className="flex items-center gap-2">
@@ -8666,20 +8670,6 @@ export default function App() {
                   </>
                 )}
               </div>
-            )}
-
-            {['notes', 'tasks', 'reminders', 'documents', 'automation'].includes(activeTab) && (
-              <button
-                onClick={() => {
-                  setActiveTab('chat');
-                  window.history.pushState({}, '', '/');
-                }}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-all cursor-pointer shadow-sm active:scale-95 flex items-center justify-center w-8 h-8 font-bold text-xs shrink-0"
-                title="Close Workspace"
-                aria-label="Close Workspace"
-              >
-                <CloseIcon className="w-4 h-4" />
-              </button>
             )}
           </div>
         </header>
