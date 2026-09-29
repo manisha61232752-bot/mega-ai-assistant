@@ -3545,22 +3545,40 @@ export default function App() {
 
   // Create a new chat
   const handleNewChat = () => {
+    if (!user || !user.token) {
+      console.warn("Cannot create chat: User is not authenticated.");
+      return;
+    }
+
     fetch(`${apiUrl}/api/chats`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${user?.token}`
+        'Authorization': `Bearer ${user.token}`
       },
       body: JSON.stringify({ title: 'New Chat' }),
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            handleLogout();
+          }
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Failed to create chat: HTTP ${res.status}`);
+        }
+        return res.json();
+      })
       .then((newChat: any) => {
+        if (!newChat || !newChat.id) {
+          throw new Error("Invalid chat object received from server.");
+        }
         const defaultChat: ChatSession = {
           ...newChat,
-          messages: [],
+          messages: Array.isArray(newChat.messages) ? newChat.messages : [],
         };
         setSessions((prev) => [defaultChat, ...prev]);
         selectChatSession(defaultChat.id);
+        setActiveTab('chat');
         if (window.innerWidth < 768) {
           setSidebarOpen(false);
         }
