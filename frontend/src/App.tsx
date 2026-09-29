@@ -8709,7 +8709,7 @@ export default function App() {
             <div
               ref={chatContainerRef}
               onScroll={handleChatScroll}
-              className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 md:p-6"
+              className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6"
             >
               {activeSession.messages.length === 0 ? (
                 /* Welcome Banner */
@@ -8734,7 +8734,7 @@ export default function App() {
                               : 'bg-slate-100 dark:bg-slate-900/60 dark:border dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none'
                           }`}
                         >
-                          {/* Top-Right Action Group for User Question: [Edit] [Share] [Copy] */}
+                          {/* Top-Right Action Group for User Question: [Edit] [Copy] */}
                           {isUser && editingMessageId !== message.id && (
                             <div className="float-right ml-3 mb-1 flex items-center gap-1 bg-indigo-700/60 rounded-full p-1 border border-indigo-400/30 shadow-2xs select-none">
                               {/* Edit Button */}
@@ -8749,19 +8749,6 @@ export default function App() {
                                 className="p-1 text-indigo-100 hover:text-white hover:bg-indigo-500/60 rounded-full transition-all cursor-pointer"
                               >
                                 <EditIcon className="w-3.5 h-3.5" />
-                              </button>
-
-                              {/* Share Button */}
-                              <button
-                                type="button"
-                                aria-label="Share message"
-                                title="Share message"
-                                onClick={() => setSharingSession(activeSession)}
-                                className="p-1 text-indigo-100 hover:text-white hover:bg-indigo-500/60 rounded-full transition-all cursor-pointer"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                                </svg>
                               </button>
 
                               {/* Copy Button */}
