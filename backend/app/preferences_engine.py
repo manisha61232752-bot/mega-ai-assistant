@@ -207,7 +207,7 @@ def get_adaptive_style_prompt(user_id: str, message: str) -> str:
     if active_style_desc:
         prompt += f"2. Presentation Format: Respond strictly in the following style: {active_style_desc}.\n"
     else:
-        prompt += "2. Presentation Format: Keep it conversational, clear, and direct.\n"
+        prompt += "2. Presentation Format: Keep it conversational, clear, and direct. Do not append unrequested Proactive Suggestions or Next Steps sections.\n"
         
     # Apply knowledge level directives
     prompt += f"3. Target Audience Level: Adjust your complexity to a **{knowledge_level.upper()}** knowledge level:\n"
