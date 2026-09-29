@@ -4628,8 +4628,8 @@ export default function App() {
     html = html.replace(/`(.*?)`/g, '<code class="bg-slate-200/70 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-xs text-indigo-600 dark:text-indigo-400 font-medium">$1</code>');
 
     // 9. List Items ($2 for numbered list content!)
-    html = html.replace(/^\s*[\-\*]\s+(.*?)$/gm, '<li class="ul-item text-slate-700 dark:text-slate-350 mb-1">$1</li>');
-    html = html.replace(/^\s*(\d+)\.\s+(.*?)$/gm, '<li class="ol-item text-slate-700 dark:text-slate-350 mb-1">$2</li>');
+    html = html.replace(/^\s*[\-\*]\s+(.*?)$/gm, '<li class="ul-item text-slate-800 dark:text-slate-200 mb-1">$1</li>');
+    html = html.replace(/^\s*(\d+)\.\s+(.*?)$/gm, '<li class="ol-item text-slate-800 dark:text-slate-200 mb-1">$2</li>');
 
     // 10. Links
     html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-700 dark:hover:text-indigo-300">$1</a>');
@@ -4646,10 +4646,10 @@ export default function App() {
 
     // 12. Wrap consecutive list items in <ol> or <ul> AFTER line splitting
     html = html.replace(/(<li class="ol-item[^"]*">[\s\S]*?<\/li>\n?)+/g, (match) => {
-      return `<ol class="list-decimal ml-6 space-y-1 my-2 text-slate-700 dark:text-slate-350">\n${match}</ol>`;
+      return `<ol class="list-decimal ml-6 space-y-1 my-2 text-slate-800 dark:text-slate-200">\n${match}</ol>`;
     });
     html = html.replace(/(<li class="ul-item[^"]*">[\s\S]*?<\/li>\n?)+/g, (match) => {
-      return `<ul class="list-disc ml-6 space-y-1 my-2 text-slate-700 dark:text-slate-350">\n${match}</ul>`;
+      return `<ul class="list-disc ml-6 space-y-1 my-2 text-slate-800 dark:text-slate-200">\n${match}</ul>`;
     });
 
     // 13. Blockquotes
@@ -8734,6 +8734,58 @@ export default function App() {
                               : 'bg-slate-100 dark:bg-slate-900/60 dark:border dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none'
                           }`}
                         >
+                          {/* Top-Right Action Group for User Question: [Edit] [Share] [Copy] */}
+                          {isUser && editingMessageId !== message.id && (
+                            <div className="float-right ml-3 mb-1 flex items-center gap-1 bg-indigo-700/60 rounded-full p-1 border border-indigo-400/30 shadow-2xs select-none">
+                              {/* Edit Button */}
+                              <button
+                                type="button"
+                                aria-label="Edit user message"
+                                title="Edit message"
+                                onClick={() => {
+                                  setEditingMessageId(message.id);
+                                  setEditingText(message.text);
+                                }}
+                                className="p-1 text-indigo-100 hover:text-white hover:bg-indigo-500/60 rounded-full transition-all cursor-pointer"
+                              >
+                                <EditIcon className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Share Button */}
+                              <button
+                                type="button"
+                                aria-label="Share message"
+                                title="Share message"
+                                onClick={() => setSharingSession(activeSession)}
+                                className="p-1 text-indigo-100 hover:text-white hover:bg-indigo-500/60 rounded-full transition-all cursor-pointer"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                                </svg>
+                              </button>
+
+                              {/* Copy Button */}
+                              <button
+                                type="button"
+                                aria-label="Copy message"
+                                title={copiedMsgId === message.id ? "Copied!" : "Copy message"}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(message.text);
+                                  setCopiedMsgId(message.id);
+                                  setTimeout(() => setCopiedMsgId(null), 2000);
+                                }}
+                                className="p-1 text-indigo-100 hover:text-white hover:bg-indigo-500/60 rounded-full transition-all cursor-pointer flex items-center gap-0.5"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.375v-3.5" />
+                                </svg>
+                                {copiedMsgId === message.id && (
+                                  <span className="text-[9px] text-indigo-200 font-bold px-0.5 animate-fade-in">Copied!</span>
+                                )}
+                              </button>
+                            </div>
+                          )}
+
                           {/* Top-Right Action Group for AI Responses: [Edit] [Share] [Copy] */}
                           {!isUser && (
                             <div className="float-right ml-3 mb-1 flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800/60 rounded-full p-1 border border-slate-300/30 dark:border-slate-700/50 shadow-2xs select-none">
@@ -9039,21 +9091,7 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* Edit Button for USER Message */}
-                        {isUser && editingMessageId !== message.id && (
-                          <button
-                            type="button"
-                            aria-label="Edit user message"
-                            title="Edit message"
-                            onClick={() => {
-                              setEditingMessageId(message.id);
-                              setEditingText(message.text);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all cursor-pointer opacity-70 hover:opacity-100"
-                          >
-                            <EditIcon className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+
                       </div>
 
                       {/* Action Toolbar for AI Responses: Like, Dislike, Copy */}
