@@ -8433,11 +8433,9 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                   </svg>
                 </div>
-                {!['notes', 'tasks', 'reminders', 'documents', 'automation'].includes(activeTab) && (
-                  <span className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
-                    Mega Assistant
-                  </span>
-                )}
+                <span className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                  Mega Assistant
+                </span>
               </div>
             </div>
           </div>
