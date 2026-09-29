@@ -2313,26 +2313,24 @@ async def clear_memories(authorization: Optional[str] = Header(None)):
 @app.put("/api/chats/{chat_id}/pin")
 async def pin_chat(chat_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    for chat in chats:
-        if chat["id"] == chat_id and chat.get("user_id") == user["sub"]:
-            chat["pinned"] = True
-            chat["updated_at"] = datetime.datetime.now().isoformat()
-            save_chats(chats)
-            return chat
-    raise HTTPException(status_code=404, detail="Chat not found")
+    chat = await db_load_chat_by_id(chat_id, user["sub"])
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    chat["pinned"] = True
+    chat["updated_at"] = datetime.datetime.now().isoformat()
+    await db_save_chat(chat)
+    return chat
 
 @app.put("/api/chats/{chat_id}/unpin")
 async def unpin_chat(chat_id: str, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
-    chats = load_chats()
-    for chat in chats:
-        if chat["id"] == chat_id and chat.get("user_id") == user["sub"]:
-            chat["pinned"] = False
-            chat["updated_at"] = datetime.datetime.now().isoformat()
-            save_chats(chats)
-            return chat
-    raise HTTPException(status_code=404, detail="Chat not found")
+    chat = await db_load_chat_by_id(chat_id, user["sub"])
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    chat["pinned"] = False
+    chat["updated_at"] = datetime.datetime.now().isoformat()
+    await db_save_chat(chat)
+    return chat
 
 @app.put("/api/chats/{chat_id}/favorite")
 async def favorite_chat(chat_id: str, authorization: Optional[str] = Header(None)):
