@@ -1550,9 +1550,24 @@ export default function App() {
     fetch(`${apiUrl}/api/admin/users`, {
       headers: { 'Authorization': `Bearer ${user.token}` }
     })
-      .then(res => res.json())
-      .then(data => setAdminUsers(data))
-      .catch(err => console.error("Error fetching admin users:", err));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAdminUsers(data);
+        } else {
+          console.error("Invalid admin users payload:", data);
+          setAdminUsers([]);
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching admin users:", err);
+        setAdminUsers([]);
+      });
   };
 
   const fetchAuditLogs = () => {
@@ -1590,9 +1605,24 @@ export default function App() {
     fetch(`${apiUrl}/api/admin/subscription/config`, {
       headers: { 'Authorization': `Bearer ${user.token}` }
     })
-      .then(res => res.json())
-      .then(data => setAdminSubConfig(data))
-      .catch(err => console.error("Error fetching admin subscription config:", err));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data && typeof data === 'object' && Array.isArray(data.features)) {
+          setAdminSubConfig(data);
+        } else {
+          console.error("Invalid admin subscription config payload:", data);
+          setAdminSubConfig(null);
+        }
+      })
+      .catch(err => {
+        console.error("Error fetching admin subscription config:", err);
+        setAdminSubConfig(null);
+      });
   };
 
 
@@ -5479,52 +5509,60 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-900 bg-white dark:bg-slate-955">
-                      {adminUsers.map(u => (
-                        <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
-                          <td className="p-3.5 pl-5">
-                            <span className="font-bold text-slate-800 dark:text-slate-200 block">{u.name}</span>
-                            <span className="text-[10px] text-slate-400 mt-0.5 block">{u.email}</span>
-                          </td>
-                          <td className="p-3.5 font-medium text-slate-655 dark:text-slate-350">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                              u.account_type?.toLowerCase().includes('pro')
-                                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                            }`}>
-                              {u.account_type || 'Free Plan'}
-                            </span>
-                          </td>
-                          <td className="p-3.5 font-bold">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] ${
-                              u.role === 'admin'
-                                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-550'
-                            }`}>
-                              {u.role || 'user'}
-                            </span>
-                          </td>
-                          <td className="p-3.5 pr-5 text-right space-x-2">
-                            {u.id !== user?.id ? (
-                              <>
-                                <button
-                                  onClick={() => handleUpdateUserRole(u.id, u.role === 'admin' ? 'user' : 'admin')}
-                                  className="text-[10px] font-bold text-indigo-650 hover:underline cursor-pointer"
-                                >
-                                  {u.role === 'admin' ? 'Demote' : 'Promote'}
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteUser(u.id)}
-                                  className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic">Self (Protected)</span>
-                            )}
+                      {Array.isArray(adminUsers) && adminUsers.length > 0 ? (
+                        adminUsers.map(u => (
+                          <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                            <td className="p-3.5 pl-5">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 block">{u.name}</span>
+                              <span className="text-[10px] text-slate-400 mt-0.5 block">{u.email}</span>
+                            </td>
+                            <td className="p-3.5 font-medium text-slate-655 dark:text-slate-350">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                u.account_type?.toLowerCase().includes('pro')
+                                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                              }`}>
+                                {u.account_type || 'Free Plan'}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-bold">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] ${
+                                u.role === 'admin'
+                                  ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                                  : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-550'
+                              }`}>
+                                {u.role || 'user'}
+                              </span>
+                            </td>
+                            <td className="p-3.5 pr-5 text-right space-x-2">
+                              {u.id !== user?.id ? (
+                                <>
+                                  <button
+                                    onClick={() => handleUpdateUserRole(u.id, u.role === 'admin' ? 'user' : 'admin')}
+                                    className="text-[10px] font-bold text-indigo-650 hover:underline cursor-pointer"
+                                  >
+                                    {u.role === 'admin' ? 'Demote' : 'Promote'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Self (Protected)</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="p-6 text-center text-slate-450 italic">
+                            No active users found.
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -5877,7 +5915,7 @@ export default function App() {
                   </div>
                 )}
 
-                {adminSubConfig ? (
+                {adminSubConfig && Array.isArray(adminSubConfig.features) ? (
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left Column: Form Settings (7 cols) */}
                     <div className="lg:col-span-7 space-y-5">
@@ -6113,7 +6151,7 @@ export default function App() {
 
                         {/* Features List */}
                         <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                          {adminSubConfig.features.map((feat: string, index: number) => (
+                          {Array.isArray(adminSubConfig?.features) && adminSubConfig.features.map((feat: string, index: number) => (
                             <div
                               key={index}
                               className="flex items-center justify-between p-2.5 bg-white dark:bg-slate-950 border border-slate-202/40 dark:border-slate-850 rounded-xl gap-2"
@@ -6332,7 +6370,7 @@ export default function App() {
                       {adminSubConfig.trial_enabled && adminSubConfig.offer_active ? 'Claim Free Offer' : 'Upgrade to Plus'}
                     </button>
                     <div className="mt-2 space-y-2.5">
-                      {adminSubConfig.features.map((feat: string, i: number) => (
+                      {Array.isArray(adminSubConfig?.features) && adminSubConfig.features.map((feat: string, i: number) => (
                         <div key={i} className="flex items-start gap-2 text-xs text-slate-355">
                           <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                           <span>{feat}</span>
