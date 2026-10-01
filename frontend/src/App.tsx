@@ -575,7 +575,7 @@ export default function App() {
 
     const current = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
     if (['/profile', '/settings', '/help', '/accounts/add', '/add-account', '/accounts'].includes(current)) {
-      const target = activeTab === 'chat' ? '/' : `/${activeTab}`;
+      const target = activeTab === 'chat' ? (activeSessionId ? `/chat/${activeSessionId}` : '/') : `/${activeTab}`;
       window.history.pushState({}, '', target);
     }
   };
@@ -1149,7 +1149,9 @@ export default function App() {
               setSessions([defaultChat]);
               setActiveSessionId(defaultChat.id);
               localStorage.setItem('mega_assistant_active_chat_id', defaultChat.id);
-              window.history.replaceState({}, '', `/chat/${defaultChat.id}`);
+              if (window.location.pathname === '/' || window.location.pathname.startsWith('/chat')) {
+                window.history.replaceState({}, '', `/chat/${defaultChat.id}`);
+              }
             });
         }
 
@@ -2570,7 +2572,7 @@ export default function App() {
         setActiveTab('chat');
       }
     } else if (category === 'account_security') {
-      setShowSettingsDialog(true);
+      navigateToRoute('/settings');
       setActiveSettingsTab('security');
     } else if (category === 'plan_billing') {
       alert("Billing and Subscription plans are disabled.");
@@ -9832,7 +9834,7 @@ export default function App() {
                 <span>ℹ️ Help & Hotkeys</span>
               </h3>
               <button
-                onClick={() => setShowHelpModal(false)}
+                onClick={() => closeRouteDialog('help')}
                 className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <CloseIcon className="w-4 h-4" />
@@ -9869,7 +9871,7 @@ export default function App() {
             </div>
 
             <button
-              onClick={() => setShowHelpModal(false)}
+              onClick={() => closeRouteDialog('help')}
               className="w-full py-2.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-250 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 transition-all cursor-pointer text-center"
             >
               Dismiss
@@ -9978,9 +9980,8 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => {
-                          setShowProfileDialog(false);
-                          setActiveTab('pricing');
-                          window.history.pushState({}, '', '/pricing');
+                          closeRouteDialog('profile');
+                          navigateToRoute('/pricing');
                         }}
                         className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                       >
@@ -10064,8 +10065,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setActiveSettingsTab('security');
-                      setShowSettingsDialog(true);
-                      setShowProfileDialog(false);
+                      navigateToRoute('/settings');
                     }}
                     className="flex-1 min-w-[120px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-semibold py-2.5 rounded-xl transition-colors cursor-pointer"
                   >
@@ -10784,7 +10784,7 @@ export default function App() {
               <div className="pt-4 border-t border-slate-100 dark:border-slate-850 mt-4 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowSettingsDialog(false)}
+                  onClick={() => closeRouteDialog('settings')}
                   className={`w-full text-white rounded-xl py-2.5 text-xs font-semibold transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
                 >
                   Close Settings
