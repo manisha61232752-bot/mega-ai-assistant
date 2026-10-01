@@ -158,7 +158,8 @@ const getChatIdFromPath = (rawPath: string): string => {
 };
 
 const resolveRouteState = (rawPath: string) => {
-  const path = rawPath.toLowerCase().replace(/\/$/, '') || '/';
+  const pathOnly = rawPath.split('?')[0].split('#')[0];
+  const path = pathOnly.toLowerCase().replace(/\/$/, '') || '/';
   let tab: 'chat' | 'notes' | 'tasks' | 'reminders' | 'documents' | 'automation' | 'notifications' | 'admin' | 'pricing' = 'chat';
   let profile = false;
   let settings = false;
@@ -167,30 +168,32 @@ const resolveRouteState = (rawPath: string) => {
   let adminSection = 'dashboard';
   let isUnknownAdminRoute = false;
 
+  const validTabs = ['chat', 'notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'];
+
   if (path.startsWith('/chat') || path.startsWith('/c/')) {
     tab = 'chat';
   } else if (path === '/profile') {
     profile = true;
     const saved = localStorage.getItem('mega_assistant_active_tab') as any;
-    if (['notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'].includes(saved)) {
+    if (validTabs.includes(saved)) {
       tab = saved;
     }
   } else if (path === '/settings') {
     settings = true;
     const saved = localStorage.getItem('mega_assistant_active_tab') as any;
-    if (['notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'].includes(saved)) {
+    if (validTabs.includes(saved)) {
       tab = saved;
     }
   } else if (path === '/help') {
     help = true;
     const saved = localStorage.getItem('mega_assistant_active_tab') as any;
-    if (['notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'].includes(saved)) {
+    if (validTabs.includes(saved)) {
       tab = saved;
     }
   } else if (path === '/accounts/add' || path === '/add-account' || path === '/accounts') {
     addAccount = true;
     const saved = localStorage.getItem('mega_assistant_active_tab') as any;
-    if (['notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'].includes(saved)) {
+    if (validTabs.includes(saved)) {
       tab = saved;
     }
   } else if (path === '/pricing' || path === '/subscription') {
@@ -339,7 +342,24 @@ export default function App() {
   });
 
   // Profile Edit & Detailed states
-  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') === 'true') return true;
+      return localStorage.getItem('mega_profile_editing') === 'true';
+    }
+    return false;
+  });
+
+  const handleSetIsEditingProfile = (editing: boolean) => {
+    setIsEditingProfile(editing);
+    localStorage.setItem('mega_profile_editing', JSON.stringify(editing));
+    if (typeof window !== 'undefined' && window.location.pathname.toLowerCase().replace(/\/$/, '') === '/profile') {
+      const newUrl = editing ? '/profile?edit=true' : '/profile';
+      window.history.replaceState({}, '', newUrl);
+    }
+  };
+
   const [editProfileName, setEditProfileName] = useState<string>('');
   const [editProfileAvatar, setEditProfileAvatar] = useState<string>('');
   const [editProfileUsername, setEditProfileUsername] = useState<string>('');
@@ -354,7 +374,28 @@ export default function App() {
   const [checkingUsername, setCheckingUsername] = useState<boolean>(false);
 
   // Settings Tabs
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'appearance' | 'notifications' | 'security' | 'privacy' | 'memory'>('appearance');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'appearance' | 'notifications' | 'security' | 'privacy' | 'memory'>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryTab = urlParams.get('tab');
+      if (queryTab && ['appearance', 'notifications', 'security', 'privacy', 'memory'].includes(queryTab)) {
+        return queryTab as any;
+      }
+      const savedTab = localStorage.getItem('mega_settings_tab');
+      if (savedTab && ['appearance', 'notifications', 'security', 'privacy', 'memory'].includes(savedTab)) {
+        return savedTab as any;
+      }
+    }
+    return 'appearance';
+  });
+
+  const handleSettingsTabChange = (tabId: 'appearance' | 'notifications' | 'security' | 'privacy' | 'memory') => {
+    setActiveSettingsTab(tabId);
+    localStorage.setItem('mega_settings_tab', tabId);
+    if (typeof window !== 'undefined' && window.location.pathname.toLowerCase().replace(/\/$/, '') === '/settings') {
+      window.history.replaceState({}, '', `/settings?tab=${tabId}`);
+    }
+  };
 
   // Notifications Preferences (9 categories)
   const [notifReminders, setNotifReminders] = useState<boolean>(() => localStorage.getItem('mega_notif_reminders') !== 'false');
@@ -535,14 +576,33 @@ export default function App() {
   };
 
   const navigateToRoute = (targetPath: string, options?: { replace?: boolean }) => {
-    const normalized = targetPath.toLowerCase().replace(/\/$/, '') || '/';
-    if (options?.replace) {
-      window.history.replaceState({}, '', normalized);
-    } else if (window.location.pathname !== normalized) {
-      window.history.pushState({}, '', normalized);
+    const rawPathOnly = targetPath.split('?')[0].split('#')[0];
+    const normalized = rawPathOnly.toLowerCase().replace(/\/$/, '') || '/';
+    const targetState = resolveRouteState(normalized);
+
+    // Save current active tab to localStorage if opening a route modal
+    if (targetState.profile || targetState.settings || targetState.help || targetState.addAccount) {
+      if (['chat', 'notes', 'tasks', 'reminders', 'documents', 'automation', 'notifications', 'admin', 'pricing'].includes(activeTab)) {
+        localStorage.setItem('mega_assistant_active_tab', activeTab);
+      }
     }
 
-    const { tab, profile, settings, help, addAccount, adminSection, isUnknownAdminRoute } = resolveRouteState(normalized);
+    let finalPath = normalized;
+    if (targetState.settings) {
+      const urlParams = new URLSearchParams(targetPath.includes('?') ? targetPath.split('?')[1] : '');
+      const paramTab = urlParams.get('tab') || activeSettingsTab;
+      finalPath = `/settings?tab=${paramTab}`;
+    } else if (targetState.profile && (targetPath.includes('edit=true') || isEditingProfile)) {
+      finalPath = '/profile?edit=true';
+    }
+
+    if (options?.replace) {
+      window.history.replaceState({}, '', finalPath);
+    } else if ((window.location.pathname + window.location.search) !== finalPath) {
+      window.history.pushState({}, '', finalPath);
+    }
+
+    const { tab, profile, settings, help, addAccount, adminSection, isUnknownAdminRoute } = targetState;
     setActiveTab(tab);
     if (tab === 'admin' && adminSection) {
       setActiveAdminSection(adminSection);
@@ -568,7 +628,10 @@ export default function App() {
   };
 
   const closeRouteDialog = (type: 'profile' | 'settings' | 'help' | 'addAccount') => {
-    if (type === 'profile') setShowProfileDialog(false);
+    if (type === 'profile') {
+      setShowProfileDialog(false);
+      handleSetIsEditingProfile(false);
+    }
     if (type === 'settings') setShowSettingsDialog(false);
     if (type === 'help') setShowHelpModal(false);
     if (type === 'addAccount') setShowAddAccountDialog(false);
@@ -10056,7 +10119,7 @@ export default function App() {
                       setEditProfileCountry(user?.country || '');
                       setEditProfileLanguage(user?.language || 'English');
                       setEditProfileTimezone(user?.timezone || 'UTC');
-                      setIsEditingProfile(true);
+                      handleSetIsEditingProfile(true);
                     }}
                     className={`flex-1 min-w-[120px] text-white text-xs font-semibold py-2.5 rounded-xl transition-all cursor-pointer text-center ${getThemeClasses(themePref).primary}`}
                   >
@@ -10064,8 +10127,8 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      setActiveSettingsTab('security');
-                      navigateToRoute('/settings');
+                      handleSettingsTabChange('security');
+                      navigateToRoute('/settings?tab=security');
                     }}
                     className="flex-1 min-w-[120px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-semibold py-2.5 rounded-xl transition-colors cursor-pointer"
                   >
@@ -10397,7 +10460,7 @@ export default function App() {
               ].map(tab => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveSettingsTab(tab.id as any)}
+                  onClick={() => handleSettingsTabChange(tab.id as any)}
                   className={`px-3 py-2 text-xs font-semibold rounded-xl text-left cursor-pointer transition-all shrink-0 ${
                     activeSettingsTab === tab.id
                       ? 'bg-indigo-650/10 text-indigo-650 dark:bg-indigo-500/15 dark:text-indigo-400 font-bold'
