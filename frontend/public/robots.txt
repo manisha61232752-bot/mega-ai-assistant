@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mega-ai-assistant.vercel.app/sitemap.xml

@@ -50,3 +50,5 @@ backend/backend/
 backend/backend/
 backend/scratch_test_*.py
 backend/app/webhook_debug.txt
+backend/*_results.json
+
