@@ -4486,9 +4486,22 @@ export default function App() {
     });
   };
 
+  const getSessionDisplayTitle = (s: ChatSession) => {
+    if (s.title && s.title !== 'New Chat') return s.title;
+    if (s.messages && s.messages.length > 0) {
+      const userMsg = s.messages.find((m) => m.sender === 'user')?.text || s.messages[0].text;
+      if (userMsg && userMsg.trim().length > 0) {
+        return userMsg.trim().length > 28 ? userMsg.trim().slice(0, 28) + '...' : userMsg.trim();
+      }
+    }
+    return 'New Chat';
+  };
+
   const pinnedSessions = filteredSessions.filter((s) => s.pinned);
-  // Recent chats contains ONLY unpinned chats
-  const recentSessions = filteredSessions.filter((s) => !s.pinned);
+  // Recent chats contains ONLY unpinned chats with messages OR the active/renamed session
+  const recentSessions = filteredSessions.filter((s) => 
+    !s.pinned && (s.id === activeSessionId || (s.messages && s.messages.length > 0) || s.title !== 'New Chat')
+  );
 
   const sortedPinned = sortSessions(pinnedSessions);
   const sortedOthers = sortSessions(recentSessions);
@@ -4532,7 +4545,7 @@ export default function App() {
               }}
               className="flex-1 text-left px-3 py-2.5 text-xs font-medium truncate cursor-pointer pr-24 flex items-center justify-between gap-1.5"
             >
-              <span className="truncate">{session.title}</span>
+              <span className="truncate">{getSessionDisplayTitle(session)}</span>
               <div className="flex items-center gap-1 shrink-0">
                 {session.favorite && <FavoriteIcon className="w-3 h-3 text-amber-500 shrink-0" solid />}
               </div>
@@ -4891,7 +4904,7 @@ export default function App() {
                 👔
               </div>
               <div className="space-y-2">
-                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Document Studio Assistant</h3>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white">Document Studio Assistant</h2>
                 <p className="text-xs text-slate-450 dark:text-slate-500 max-w-sm">
                   Choose a document type, enter details, and let the AI generate a customized professional copy template for you.
                 </p>
@@ -7809,10 +7822,10 @@ export default function App() {
             {/* New / Unread alerts section */}
             {unreadFiltered.length > 0 && (
               <div className="space-y-2.5">
-                <h3 className="text-[10px] font-extrabold text-rose-500 dark:text-rose-455 uppercase tracking-widest flex items-center gap-2">
+                <h2 className="text-[10px] font-extrabold text-rose-500 dark:text-rose-455 uppercase tracking-widest flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
                   New Alerts ({unreadFiltered.length})
-                </h3>
+                </h2>
                 
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800/60 overflow-hidden shadow-sm">
                   {unreadFiltered.map(notif => {
@@ -7885,9 +7898,9 @@ export default function App() {
             {/* Cleared / Read alerts section */}
             {readFiltered.length > 0 && (
               <div className="space-y-2.5">
-                <h3 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                <h2 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                   Cleared Alerts ({readFiltered.length})
-                </h3>
+                </h2>
                 
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800/60 overflow-hidden shadow-sm">
                   {readFiltered.map(notif => {
@@ -8314,10 +8327,10 @@ export default function App() {
           {/* New Chat Button */}
           <button
             onClick={handleNewChat}
-            className={`btn-primary w-full flex items-center justify-center gap-2 py-3 px-4 text-sm font-semibold active:scale-[0.98] transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
+            className={`btn-primary w-full h-11 min-h-[44px] flex flex-row items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold whitespace-nowrap shrink-0 active:scale-[0.98] transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
           >
-            <PlusIcon className="w-4 h-4" />
-            New Chat
+            <PlusIcon className="w-4 h-4 shrink-0" />
+            <span>New Chat</span>
           </button>
           
           {/* Productivity Navigation Tabs */}
@@ -8426,13 +8439,19 @@ export default function App() {
           </div>
 
           {/* Search bar */}
-          <div className="px-1 pt-1">
+          <div className="px-1 pt-1 relative">
+            <div className="absolute inset-y-0 left-3.5 pt-1 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z" />
+              </svg>
+            </div>
             <input
               type="text"
+              aria-label="Search chats"
               placeholder="Search chats..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 border border-slate-205 dark:border-slate-800 rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 border border-slate-205 dark:border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -8536,7 +8555,7 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                   </svg>
                 </div>
-                <h1 className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent m-0 p-0 inline-block">
+                <h1 className="text-lg md:text-xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent m-0 p-0 inline-block">
                   Mega AI Assistant
                 </h1>
               </div>
@@ -8832,10 +8851,10 @@ export default function App() {
                       <div className={`flex gap-2 items-center ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                         {/* Message Bubble */}
                         <div
-                          className={`relative w-fit max-w-[85%] md:max-w-[75%] rounded-2xl px-4.5 py-3 md:px-5 text-sm leading-relaxed shadow-sm transition-all break-words ${
+                          className={`relative rounded-2xl px-4.5 py-3 md:px-5 text-sm leading-relaxed shadow-sm transition-all break-words ${
                             isUser
-                              ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-600/10'
-                              : 'bg-slate-100 dark:bg-slate-900/60 dark:border dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none'
+                              ? 'w-fit max-w-[85%] md:max-w-[75%] bg-indigo-600 text-white rounded-br-none shadow-indigo-600/10'
+                              : 'w-full max-w-[720px] bg-slate-100 dark:bg-slate-900/60 dark:border dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none'
                           }`}
                         >
                           {/* Top-Right Action Group for User Question: [Edit] [Copy] */}
@@ -9315,28 +9334,28 @@ export default function App() {
 
             {/* Web Search Active Indicator */}
             {webSearchEnabled && (
-              <div className="flex items-center gap-2 text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
+              <div className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
                 <span className="relative flex h-1.5 w-1.5 shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
                 </span>
-                <span>WEB SEARCH ACTIVE (Generates live internet grounded responses)</span>
+                <span>Web Search Active (Generates live internet grounded responses)</span>
               </div>
             )}
 
             {/* Image Generation Active Indicator */}
             {imageGenEnabled && (
-              <div className="flex items-center gap-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
+              <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
                 <span className="relative flex h-1.5 w-1.5 shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                 </span>
-                <span>IMAGE GENERATION ACTIVE (Enter a prompt to generate an image)</span>
+                <span>Image Generation Active (Enter a prompt to generate an image)</span>
               </div>
             )}
 
             {/* Input Wrapper Card */}
-            <div className="relative flex items-end w-full border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 rounded-2xl p-1.5 pr-12 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500 transition-all">
+            <div className="relative flex items-end w-full border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 rounded-2xl p-1.5 pr-14 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500 transition-all">
               
               {/* Plus (+) Menu Trigger Button */}
               <div className="relative shrink-0">
@@ -9345,7 +9364,7 @@ export default function App() {
                   onClick={togglePlusMenu}
                   title="More options"
                   aria-label="More options"
-                  className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+                  className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer ${
                     plusMenuOpen 
                       ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100' 
                       : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
@@ -9462,12 +9481,13 @@ export default function App() {
                 className="flex-1 max-h-40 min-h-[38px] bg-transparent resize-none border-0 outline-none text-slate-800 dark:text-slate-100 py-2 px-3 focus:ring-0 text-sm leading-relaxed"
               />
 
-              {/* Mic Icon (UI Only) */}
+              {/* Mic Icon */}
               <button
                 type="button"
                 onClick={handleVoiceClick}
-                title="Voice Input"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer shrink-0 ${
+                title="Voice input"
+                aria-label="Voice input"
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer shrink-0 ${
                   isRecording 
                     ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' 
                     : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
@@ -9494,9 +9514,11 @@ export default function App() {
               {/* Send Button */}
               <button
                 type="button"
+                title="Send message"
+                aria-label="Send message"
                 disabled={(!inputValue.trim() && !uploadedFileInfo) || isTyping || (!!selectedFile && !uploadedFileInfo && !uploadError)}
                 onClick={handleSendMessage}
-                className={`absolute right-1.5 bottom-1.5 p-2 rounded-xl text-white disabled:opacity-30 transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
+                className={`absolute right-1.5 bottom-1.5 w-10 h-10 flex items-center justify-center rounded-xl text-white disabled:opacity-30 transition-all cursor-pointer shadow-sm ${getThemeClasses(themePref).primary}`}
               >
                 <SendIcon className="w-4 h-4" />
               </button>
@@ -9628,7 +9650,7 @@ export default function App() {
 
                   {/* Demo Mode Notice */}
                   <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 flex flex-col gap-1 text-[11.5px] text-amber-400 font-sans">
-                    <strong className="font-extrabold uppercase tracking-wide">DEMO PAYMENT MODE ACTIVE</strong>
+                    <strong className="font-extrabold tracking-wide">Demo Payment Mode Active</strong>
                     <p className="leading-relaxed text-slate-300">
                       No real money will be charged during this evaluation.
                     </p>
