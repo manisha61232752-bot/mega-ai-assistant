@@ -4139,7 +4139,7 @@ export default function App() {
 
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">
                   Email address
                 </label>
                 <input
@@ -4154,7 +4154,7 @@ export default function App() {
 
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                     Password
                   </label>
                   <button
@@ -4791,7 +4791,7 @@ export default function App() {
         <div className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex flex-col shrink-0">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">Documents Workspace</h2>
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white tracking-tight">Documents Workspace</h2>
               <button
                 onClick={() => {
                   setActiveDocument({
@@ -5467,7 +5467,7 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-white dark:bg-slate-950 p-4 border border-slate-200/40 dark:border-slate-850 rounded-2xl">
                       <h4 className="text-xs font-bold text-slate-750 dark:text-slate-200 mb-2">Role Management</h4>
-                      <p className="text-[10px] text-slate-450 leading-relaxed mb-4">
+                      <p className="text-xs text-slate-450 leading-relaxed mb-4">
                         Promote normal users to admin privilege levels or deactivate access. Admin status yields backend router configuration control.
                       </p>
                       <button onClick={() => handleAdminSectionChange('users')} className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer">
@@ -5477,7 +5477,7 @@ export default function App() {
 
                     <div className="bg-white dark:bg-slate-950 p-4 border border-slate-200/40 dark:border-slate-850 rounded-2xl">
                       <h4 className="text-xs font-bold text-slate-750 dark:text-slate-200 mb-2">Error simulation</h4>
-                      <p className="text-[10px] text-slate-450 leading-relaxed mb-4">
+                      <p className="text-xs text-slate-450 leading-relaxed mb-4">
                         Simulate background thread exception loops or warn triggers. Test if notification dispatches function properly.
                       </p>
                       <button onClick={handleSimulateError} className="bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-650 dark:text-rose-400 text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer">
@@ -6868,7 +6868,7 @@ export default function App() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 max-w-4xl mx-auto w-full">
         <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-805/60">
           <div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Notes Manager</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Notes Manager</h1>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Organize thoughts, pin items, and query via AI chat</p>
           </div>
           <div className="flex items-center gap-3">
@@ -7037,7 +7037,7 @@ export default function App() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 max-w-4xl mx-auto w-full">
         <div className="flex justify-between items-start pb-4 border-b border-slate-200 dark:border-slate-805/60">
           <div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Task Board</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Task Board</h1>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Manage project assignments, toggle priority, and let AI outline tasks</p>
           </div>
           <button
@@ -7158,7 +7158,7 @@ export default function App() {
         {/* Header section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">AI Workflow Automation</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">AI Workflow Automation</h1>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Automate tasks, reminders, documents, and notes using natural language workflows.
             </p>
@@ -7961,7 +7961,7 @@ export default function App() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 max-w-4xl mx-auto w-full">
         <div className="flex justify-between items-center pb-4 border-b border-slate-200 dark:border-slate-805/60">
           <div>
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Smart Reminders</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Smart Reminders</h1>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Schedule smart time alerts with priorities and recurring frequencies.
             </p>
@@ -8314,7 +8314,7 @@ export default function App() {
           {/* New Chat Button */}
           <button
             onClick={handleNewChat}
-            className={`w-full flex items-center justify-center gap-2 text-white rounded-xl py-3 px-4 text-sm font-semibold active:scale-[0.98] transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
+            className={`btn-primary w-full flex items-center justify-center gap-2 py-3 px-4 text-sm font-semibold active:scale-[0.98] transition-all cursor-pointer ${getThemeClasses(themePref).primary}`}
           >
             <PlusIcon className="w-4 h-4" />
             New Chat
@@ -8536,9 +8536,9 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                   </svg>
                 </div>
-                <span className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
-                  Mega Assistant
-                </span>
+                <h1 className="font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent m-0 p-0 inline-block">
+                  Mega AI Assistant
+                </h1>
               </div>
             </div>
           </div>
@@ -8550,9 +8550,10 @@ export default function App() {
                 setActiveTab('pricing');
                 window.history.pushState({}, '', '/pricing');
               }}
-              className="bg-violet-500/10 text-violet-650 dark:text-violet-400 border border-violet-500/20 text-xs font-bold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm shadow-violet-500/5 select-none hover:bg-violet-500/20 transition-all cursor-pointer"
+              className="bg-slate-100 dark:bg-slate-850 hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-650 dark:text-slate-300 border border-slate-200 dark:border-slate-750 text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer select-none"
+              title="View subscription plans"
             >
-              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-pulse"></span>
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
               {user?.account_type === 'PRO' ? 'Mega Pro' : user?.account_type === 'PLUS' ? 'Mega Plus' : 'Mega Free'}
             </button>
 
@@ -8827,13 +8828,13 @@ export default function App() {
                 {activeSession.messages.map((message) => {
                   const isUser = message.sender === 'user';
                   return (
-                    <div key={message.id} className={`flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div key={message.id} className={`flex flex-col gap-1 ${isUser ? 'items-end pr-2 md:pr-4' : 'items-start'}`}>
                       <div className={`flex gap-2 items-center ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                         {/* Message Bubble */}
                         <div
-                          className={`relative max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm transition-all ${
+                          className={`relative w-fit max-w-[85%] md:max-w-[75%] rounded-2xl px-4.5 py-3 md:px-5 text-sm leading-relaxed shadow-sm transition-all break-words ${
                             isUser
-                              ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-600/5'
+                              ? 'bg-indigo-600 text-white rounded-br-none shadow-indigo-600/10'
                               : 'bg-slate-100 dark:bg-slate-900/60 dark:border dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none'
                           }`}
                         >
@@ -8876,57 +8877,7 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* Top-Right Action Group for AI Responses: [Edit] [Share] [Copy] */}
-                          {!isUser && (
-                            <div className="float-right ml-3 mb-1 flex items-center gap-1 bg-slate-200/50 dark:bg-slate-800/60 rounded-full p-1 border border-slate-300/30 dark:border-slate-700/50 shadow-2xs select-none">
-                              {/* Edit Button */}
-                              <button
-                                type="button"
-                                aria-label="Edit AI response"
-                                title="Edit response"
-                                onClick={() => {
-                                  setEditingMessageId(message.id);
-                                  setEditingText(message.text);
-                                }}
-                                className="p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-white/80 dark:hover:bg-slate-700 rounded-full transition-all cursor-pointer"
-                              >
-                                <EditIcon className="w-3.5 h-3.5" />
-                              </button>
 
-                              {/* Share Button */}
-                              <button
-                                type="button"
-                                aria-label="Share AI response"
-                                title="Share response"
-                                onClick={() => setSharingSession(activeSession)}
-                                className="p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-white/80 dark:hover:bg-slate-700 rounded-full transition-all cursor-pointer"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                                </svg>
-                              </button>
-
-                              {/* Copy Button */}
-                              <button
-                                type="button"
-                                aria-label="Copy AI response"
-                                title={copiedMsgId === message.id ? "Copied!" : "Copy response"}
-                                onClick={() => {
-                                  navigator.clipboard.writeText(message.text);
-                                  setCopiedMsgId(message.id);
-                                  setTimeout(() => setCopiedMsgId(null), 2000);
-                                }}
-                                className="p-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-white/80 dark:hover:bg-slate-700 rounded-full transition-all cursor-pointer flex items-center gap-0.5"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.375v-3.5" />
-                                </svg>
-                                {copiedMsgId === message.id && (
-                                  <span className="text-[9px] text-indigo-500 font-bold px-0.5 animate-fade-in">Copied!</span>
-                                )}
-                              </button>
-                            </div>
-                          )}
 
                           {editingMessageId === message.id ? (
                             <div className="space-y-2 min-w-[240px] sm:min-w-[320px] clear-both">
@@ -9184,9 +9135,58 @@ export default function App() {
 
                       </div>
 
-                      {/* Action Toolbar for AI Responses: Like, Dislike, Copy */}
+                      {/* Action Toolbar for AI Responses: Edit, Share, Copy, Like, Dislike */}
                       {!isUser && (
-                        <div className="flex items-center gap-1 mt-1 pl-1">
+                        <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-200/40 dark:border-slate-800/40 select-none">
+                          {/* Edit Button */}
+                          <button
+                            type="button"
+                            aria-label="Edit AI response"
+                            title="Edit response"
+                            onClick={() => {
+                              setEditingMessageId(message.id);
+                              setEditingText(message.text);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                          >
+                            <EditIcon className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Share Button */}
+                          <button
+                            type="button"
+                            aria-label="Share AI response"
+                            title="Share response"
+                            onClick={() => setSharingSession(activeSession)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                            </svg>
+                          </button>
+
+                          {/* Copy Button */}
+                          <button
+                            type="button"
+                            aria-label="Copy AI response"
+                            title={copiedMsgId === message.id ? "Copied!" : "Copy response"}
+                            onClick={() => {
+                              navigator.clipboard.writeText(message.text);
+                              setCopiedMsgId(message.id);
+                              setTimeout(() => setCopiedMsgId(null), 2000);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.375v-3.5" />
+                            </svg>
+                            {copiedMsgId === message.id && (
+                              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold animate-fade-in">Copied!</span>
+                            )}
+                          </button>
+
+                          <div className="w-px h-3.5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
                           {/* Like Button */}
                           <button
                             type="button"
@@ -9198,7 +9198,7 @@ export default function App() {
                                 [message.id]: prev[message.id] === 'like' ? undefined : 'like'
                               }));
                             }}
-                            className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               likedMessages[message.id] === 'like'
                                 ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
                                 : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -9220,7 +9220,7 @@ export default function App() {
                                 [message.id]: prev[message.id] === 'dislike' ? undefined : 'dislike'
                               }));
                             }}
-                            className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+                            className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                               likedMessages[message.id] === 'dislike'
                                 ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20'
                                 : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
