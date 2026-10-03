@@ -888,19 +888,35 @@ def extract_text_from_docx(filepath: str) -> str:
     except Exception as e:
         return f"Error extracting text from DOCX document: {e}"
 
-def extract_text_from_pdf(filepath: str) -> str:
+def extract_pdf_content(filepath: str) -> tuple:
     extracted_text = ""
+    page_images = []
     try:
         from pypdf import PdfReader
+        import base64
         reader = PdfReader(filepath)
         extracted = []
-        for page in reader.pages:
+        for i, page in enumerate(reader.pages):
             t = page.extract_text()
             if t:
                 extracted.append(t)
+            if not t or len(t.strip()) < 50:
+                try:
+                    for img in page.images:
+                        img_bytes = img.data
+                        img_name = img.name.lower()
+                        mime = "image/png" if img_name.endswith(".png") else "image/jpeg"
+                        b64_img = base64.b64encode(img_bytes).decode("utf-8")
+                        page_images.append({"mime_type": mime, "data": b64_img})
+                        if len(page_images) >= 3:
+                            break
+                except Exception as ie:
+                    print(f"[PDF Image Extraction Warning page {i}]:", ie)
+            if len(page_images) >= 3:
+                break
         extracted_text = "\n".join(extracted).strip()
     except Exception as e:
-        print("[PDF Text Extraction Warning (pypdf)]:", e)
+        print("[PDF Extraction Warning (pypdf)]:", e)
 
     if not extracted_text:
         try:
@@ -921,7 +937,11 @@ def extract_text_from_pdf(filepath: str) -> str:
         except Exception as fe:
             print("[PDF Fallback Text Extraction Warning]:", fe)
 
-    return extracted_text
+    return extracted_text, page_images
+
+def extract_text_from_pdf(filepath: str) -> str:
+    text, _ = extract_pdf_content(filepath)
+    return text
 
 # Auth Endpoints
 @app.post("/api/auth/register")
@@ -3538,16 +3558,15 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
             return {"reply": f"Error: Failed to read attached file '{filename}' contents."}
             
         # Parse based on file type
-        if file_type in [".png", ".jpg", ".jpeg", ".webp", ".pdf"]:
+        if file_type in [".png", ".jpg", ".jpeg", ".webp"]:
             b64_data = base64.b64encode(file_bytes).decode("utf-8")
             mime_types = {
                 ".png": "image/png",
                 ".jpg": "image/jpeg",
                 ".jpeg": "image/jpeg",
-                ".webp": "image/webp",
-                ".pdf": "application/pdf"
+                ".webp": "image/webp"
             }
-            mime_type = mime_types.get(file_type, "application/octet-stream")
+            mime_type = mime_types.get(file_type, "image/jpeg")
             
             parts.append({
                 "inline_data": {
@@ -3555,22 +3574,32 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                     "data": b64_data
                 }
             })
+            prompt_text = request.message.strip() if request.message.strip() else "Describe this image in detail."
+            parts.append({"text": prompt_text})
+
+        elif file_type == ".pdf":
+            extracted_pdf_text, page_images = extract_pdf_content(temp_filepath)
             
-            if file_type == ".pdf":
-                extracted_pdf_text = extract_text_from_pdf(temp_filepath)
-                if extracted_pdf_text:
-                    MAX_PDF_TEXT_LEN = 15000
-                    if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
-                        extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
-                    pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
+            # Attach scanned page images if text extraction was empty/minimal
+            if page_images:
+                for img_part in page_images:
+                    parts.append({"inline_data": img_part})
+
+            if extracted_pdf_text:
+                MAX_PDF_TEXT_LEN = 15000
+                if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
+                    extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
+                pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
+            else:
+                if page_images:
+                    pdf_prompt = f"[Attached PDF Content: {filename} (Scanned Document - Visual page content attached)]\n"
                 else:
                     pdf_prompt = f"[Attached PDF Content: {filename}]\n[Note: Unable to extract text stream from PDF file. Process document context accordingly.]\n"
-                file_text_context = pdf_prompt
-                parts.append({"text": pdf_prompt})
 
-            prompt_text = request.message.strip()
-            if not prompt_text:
-                prompt_text = "Analyze and explain this document." if file_type == ".pdf" else "Describe this image in detail."
+            file_text_context = pdf_prompt
+            parts.append({"text": pdf_prompt})
+
+            prompt_text = request.message.strip() if request.message.strip() else "Analyze and explain this document."
             parts.append({"text": prompt_text})
             
         else:
