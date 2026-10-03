@@ -910,6 +910,27 @@ export default function App() {
     return url;
   };
 
+  const handleDownloadImage = async (imageUrl: string, filename: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Image download failed: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Image download failed:", error);
+      window.open(imageUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   // Global click-outside-to-close behavior
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -9092,18 +9113,15 @@ export default function App() {
                                     className="w-full h-auto object-cover rounded-lg border border-slate-200/60 dark:border-slate-800 hover:scale-[1.01] transition-transform duration-200" 
                                   />
                                   <div className="p-1.5 flex justify-end">
-                                    <a 
-                                      href={resolveImageUrl(message.image_url)} 
-                                      download={`generated-image-${message.id}.png`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button 
+                                      onClick={() => handleDownloadImage(resolveImageUrl(message.image_url), `generated-image-${message.id}.jpg`)}
                                       className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 hover:underline px-2 py-1 bg-indigo-500/10 rounded-lg cursor-pointer transition-all"
                                     >
                                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                                       </svg>
                                       Download Image
-                                    </a>
+                                    </button>
                                   </div>
                                 </div>
                               )}
