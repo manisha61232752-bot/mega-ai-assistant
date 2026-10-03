@@ -37,11 +37,6 @@ interface Message {
     file_type: string;
     file_size: number;
   };
-  sources?: {
-    title: string;
-    url: string;
-    timestamp: string;
-  }[];
   used_sources?: {
     id: string;
     title: string;
@@ -453,7 +448,6 @@ export default function App() {
   // Chat search & sorting states
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(false);
   const [imageGenEnabled, setImageGenEnabled] = useState<boolean>(false);
 
   // File Upload state
@@ -3585,7 +3579,7 @@ export default function App() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${user?.token}`
       },
-      body: JSON.stringify({ chat_id: currentSessionId, message: userMsgText, file: filePayload, web_search: webSearchEnabled }),
+      body: JSON.stringify({ chat_id: currentSessionId, message: userMsgText, file: filePayload }),
     })
       .then((res) => {
         if (!res.ok) {
@@ -3600,7 +3594,6 @@ export default function App() {
           sender: 'bot',
           text: data.reply || "No response received.",
           timestamp: new Date(),
-          sources: data.sources || undefined,
           used_sources: data.used_sources || undefined,
           agent: data.agent || undefined,
           tool_info: data.tool_info || undefined
@@ -9185,39 +9178,6 @@ export default function App() {
                                 </div>
                               )}
                               
-                              {/* Web Search Sources list */}
-                              {!isUser && message.sources && message.sources.length > 0 && (
-                                <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-slate-800/60 space-y-1.5 animate-fade-in">
-                                  <div className="flex items-center gap-1 text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-                                    </svg>
-                                    Search sources ({message.sources.length})
-                                  </div>
-                                  <div className="grid grid-cols-1 gap-1">
-                                    {message.sources.map((src, sidx) => {
-                                      const srcTime = src.timestamp ? new Date(src.timestamp) : new Date();
-                                      return (
-                                        <div key={sidx} className="flex flex-col bg-white/50 dark:bg-slate-950/20 p-2 rounded-xl border border-slate-200/40 dark:border-slate-800/40 text-[10px] space-y-0.5 shadow-sm">
-                                          <a
-                                            href={src.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="font-bold text-indigo-650 dark:text-indigo-400 hover:underline truncate block"
-                                          >
-                                            {src.title || "Grounded Source Link"}
-                                          </a>
-                                          <span className="text-[8px] text-slate-400 dark:text-slate-500 truncate block">
-                                            {src.url} • {srcTime.toLocaleDateString()} {srcTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-
                               {/* Background Knowledge Indicator (Compact Collapsible UI) */}
                               {!isUser && message.used_sources && message.used_sources.length > 0 && (
                                 <details className="mt-2 pt-1.5 border-t border-slate-200/40 dark:border-slate-800/40 group">
@@ -9419,17 +9379,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Web Search Active Indicator */}
-            {webSearchEnabled && (
-              <div className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
-                <span className="relative flex h-1.5 w-1.5 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
-                </span>
-                <span>Web Search Active (Generates live internet grounded responses)</span>
-              </div>
-            )}
-
             {/* Image Generation Active Indicator */}
             {imageGenEnabled && (
               <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl self-start mb-2 animate-fade-in shadow-sm">
@@ -9514,28 +9463,7 @@ export default function App() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setPlusMenuOpen(false);
-                        setWebSearchEnabled((prev) => !prev);
-                        if (!webSearchEnabled) setImageGenEnabled(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-all text-left ${
-                        webSearchEnabled 
-                          ? 'bg-indigo-500/10 text-indigo-650 dark:text-indigo-400' 
-                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                      }`}
-                      title="Web Search"
-                      aria-label="Web Search"
-                    >
-                      <span className="text-sm shrink-0">🌐</span>
-                      <span className="truncate">Web Search</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPlusMenuOpen(false);
                         setImageGenEnabled((prev) => !prev);
-                        if (!imageGenEnabled) setWebSearchEnabled(false);
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-all text-left ${
                         imageGenEnabled 

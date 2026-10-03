@@ -393,7 +393,6 @@ class ChatRequest(BaseModel):
     chat_id: str
     message: str = ""
     file: Optional[dict] = None
-    web_search: Optional[bool] = False
 
 class CreateChatRequest(BaseModel):
     id: Optional[str] = None
@@ -2533,316 +2532,7 @@ import urllib.parse
 import html
 import xml.etree.ElementTree as ET
 
-async def fetch_open_meteo_weather(city_name: str):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
-        try:
-            geo_res = await client.get(f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_name)}&count=1")
-            if geo_res.status_code == 200 and geo_res.json().get("results"):
-                loc = geo_res.json()["results"][0]
-                lat, lon = loc["latitude"], loc["longitude"]
-                name, country = loc.get("name", city_name), loc.get("country", "")
-                
-                w_res = await client.get(
-                    f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
-                )
-                if w_res.status_code == 200:
-                    w_data = w_res.json()
-                    curr = w_data.get("current", {})
-                    daily = w_data.get("daily", {})
-                    codes = {
-                        0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
-                        45: "Fog", 48: "Depositing rime fog", 51: "Light drizzle", 53: "Moderate drizzle",
-                        55: "Dense drizzle", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
-                        71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow", 80: "Rain showers",
-                        81: "Moderate rain showers", 82: "Violent rain showers", 95: "Thunderstorm"
-                    }
-                    condition = codes.get(curr.get("weather_code", 0), "Clear sky")
-                    temp = curr.get("temperature_2m")
-                    humidity = curr.get("relative_humidity_2m")
-                    wind = curr.get("wind_speed_10m")
-                    high = daily.get("temperature_2m_max", [None])[0]
-                    low = daily.get("temperature_2m_min", [None])[0]
-                    
-                    snippet = f"Live Weather Report for {name}, {country}:\n"
-                    snippet += f"• Current Condition: {condition}\n"
-                    snippet += f"• Temperature: {temp}°C\n"
-                    snippet += f"• Relative Humidity: {humidity}%\n"
-                    snippet += f"• Wind Speed: {wind} km/h\n"
-                    if high is not None and low is not None:
-                        snippet += f"• Today High: {high}°C | Low: {low}°C\n"
-                    snippet += f"• Report Timestamp: {datetime.datetime.now().strftime('%B %d, %Y %H:%M UTC')}"
-                    
-                    return [{
-                        "title": f"Live Weather Report - {name}, {country}",
-                        "url": f"https://open-meteo.com/en/forecast?latitude={lat}&longitude={lon}",
-                        "snippet": snippet,
-                        "content": snippet,
-                        "is_weather": True
-                    }]
-        except Exception as e:
-            print("Open-Meteo weather fetch error:", e)
-    return []
 
-async def fetch_news_rss(query: str, max_items: int = 4):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-    encoded = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
-    results = []
-    async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, headers=headers) as client:
-        try:
-            res = await client.get(url)
-            if res.status_code == 200:
-                root = ET.fromstring(res.text)
-                items = root.findall(".//item")
-                for item in items[:max_items]:
-                    title = item.findtext("title", "")
-                    link = item.findtext("link", "")
-                    pub_date = item.findtext("pubDate", "")
-                    source = item.findtext("source", "")
-                    if title and link:
-                        results.append({
-                            "title": title,
-                            "url": link,
-                            "snippet": f"Headline: {title} | Publisher: {source} | Date: {pub_date}",
-                            "content": f"News Article Headline: {title}\nPublisher: {source}\nPublished Date: {pub_date}\nSource URL: {link}"
-                        })
-        except Exception as e:
-            print("News RSS fetch error:", e)
-    return results
-
-async def fetch_page_content(url: str, max_chars: int = 2500) -> str:
-    if not url or not url.startswith("http") or any(ext in url.lower() for ext in [".pdf", ".png", ".jpg", ".jpeg", ".mp4", ".zip", ".gif"]):
-        return ""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=7.0, headers=headers) as client:
-            res = await client.get(url)
-            if res.status_code == 200:
-                text = res.text
-                clean = re.sub(r'<(script|style|svg|path|header|footer|nav)[^>]*>[\s\S]*?</\1>', '', text, flags=re.IGNORECASE)
-                clean = re.sub(r'<[^>]+>', ' ', clean)
-                clean = html.unescape(clean)
-                clean = re.sub(r'\s+', ' ', clean).strip()
-                if len(clean) > max_chars:
-                    clean = clean[:max_chars] + "..."
-                return clean
-    except Exception as e:
-        print(f"Page content fetch failed for {url}: {e}")
-    return ""
-
-async def search_duckduckgo(query: str, max_results: int = 4):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    q_clean = query.strip()
-    q_lower = q_clean.lower()
-
-    # 1. Weather Intent Check
-    if any(k in q_lower for k in ["weather", "temperature", "mausam", "forecast", "rain in", "weather in"]):
-        loc_match = re.search(r'(?:weather|temperature|forecast|mausam)\s+(?:in|for|at|of)?\s*([a-zA-Z\s\?!\.,]+)', q_lower)
-        raw_city = loc_match.group(1).strip() if loc_match else q_clean
-        clean_city = re.sub(r'\b(what|is|the|today|todays|now|current|latest|right|rain|weather|temperature|forecast|mausam|in|for|at|of)\b', '', raw_city, flags=re.IGNORECASE)
-        city = re.sub(r'[^\w\s]', '', clean_city).strip()
-        weather_res = await fetch_open_meteo_weather(city or "Jaipur")
-        if weather_res:
-            return weather_res
-
-    # 2. News Intent Check
-    if any(k in q_lower for k in ["latest news", "news today", "breaking news", "headlines", "major technology news", "tech news", "technology news"]):
-        news_res = await fetch_news_rss(q_clean)
-        if news_res:
-            return news_res
-
-    # 3. Optimize search query for specific topics
-    search_query = q_clean
-    if "official" in q_lower:
-        if "aws" in q_lower and "ai practitioner" in q_lower:
-            search_query = "official AWS Certified AI Practitioner course site:aws.amazon.com"
-        elif "openai" in q_lower:
-            search_query = "official OpenAI website latest model site:openai.com"
-
-    results = []
-
-    # Attempt 1: DuckDuckGo HTML Search
-    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, headers=headers) as client:
-            res = await client.get(url)
-            if res.status_code == 200:
-                html_content = res.text
-                anchors = re.findall(r'<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>', html_content)
-                
-                url_to_details = {}
-                for href, inner in anchors:
-                    if "uddg" in href:
-                        parsed_url = urllib.parse.urlparse(href)
-                        query_params = urllib.parse.parse_qs(parsed_url.query)
-                        if "uddg" in query_params:
-                            dest_url = query_params["uddg"][0]
-                        else:
-                            uddg_match = re.search(r'uddg=([^&]+)', href)
-                            dest_url = urllib.parse.unquote(uddg_match.group(1)) if uddg_match else None
-                        
-                        if not dest_url or "duckduckgo.com" in dest_url:
-                            continue
-                            
-                        clean_text = re.sub(r'<[^>]*>', '', inner).strip()
-                        clean_text = html.unescape(clean_text)
-                        
-                        if not clean_text or clean_text.startswith("www.") or clean_text.lower().startswith("http") or ((" " not in clean_text) and ("." in clean_text)):
-                            continue
-                            
-                        if dest_url not in url_to_details:
-                            url_to_details[dest_url] = []
-                        url_to_details[dest_url].append(clean_text)
-
-                for dest_url, texts in url_to_details.items():
-                    if not texts:
-                        continue
-                    title = texts[0]
-                    snippet = texts[1] if len(texts) > 1 else ""
-                    results.append({
-                        "title": title,
-                        "url": dest_url,
-                        "snippet": snippet
-                    })
-                    if len(results) >= max_results:
-                        break
-    except Exception as e:
-        print(f"DuckDuckGo search error: {e}")
-
-    # Attempt 2: DDG Lite Search if HTML search returned no items
-    if not results:
-        try:
-            lite_url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(search_query)}"
-            async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, headers=headers) as client:
-                res = await client.get(lite_url)
-                if res.status_code == 200:
-                    lite_anchors = re.findall(r'<a\s+class="result-link"\s+href="([^"]+)">([\s\S]*?)</a>', res.text)
-                    for href, inner in lite_anchors[:max_results]:
-                        clean_title = html.unescape(re.sub(r'<[^>]+>', '', inner).strip())
-                        results.append({
-                            "title": clean_title,
-                            "url": href,
-                            "snippet": clean_title
-                        })
-        except Exception as e:
-            print(f"DDG Lite error: {e}")
-
-    # Attempt 3: Wikipedia Search API (Cloud hosting resilient fallback)
-    if not results:
-        try:
-            wiki_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(search_query)}&format=json"
-            async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, headers=headers) as client:
-                res = await client.get(wiki_url)
-                if res.status_code == 200:
-                    data = res.json()
-                    search_items = data.get("query", {}).get("search", [])
-                    for item in search_items[:max_results]:
-                        w_title = item.get("title", "")
-                        w_snippet = re.sub(r'<[^>]+>', '', item.get("snippet", ""))
-                        w_snippet = html.unescape(w_snippet).strip()
-                        w_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(w_title.replace(' ', '_'))}"
-                        if w_title and w_url:
-                            results.append({
-                                "title": f"{w_title} - Wikipedia",
-                                "url": w_url,
-                                "snippet": w_snippet
-                            })
-        except Exception as e:
-            print(f"Wikipedia search fallback error: {e}")
-
-    # Attempt 4: DuckDuckGo Instant Answer API (Cloud hosting resilient fallback)
-    if not results:
-        try:
-            ddg_api_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(search_query)}&format=json&no_html=1"
-            async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, headers=headers) as client:
-                res = await client.get(ddg_api_url)
-                if res.status_code == 200:
-                    data = res.json()
-                    abstract = data.get("AbstractText", "").strip()
-                    abs_url = data.get("AbstractURL", "").strip()
-                    heading = data.get("Heading", search_query).strip()
-                    if abstract and abs_url:
-                        results.append({
-                            "title": heading,
-                            "url": abs_url,
-                            "snippet": abstract
-                        })
-                    for topic in data.get("RelatedTopics", []):
-                        if isinstance(topic, dict) and topic.get("Text") and topic.get("FirstURL"):
-                            results.append({
-                                "title": topic.get("Text")[:60] + "...",
-                                "url": topic.get("FirstURL"),
-                                "snippet": topic.get("Text")
-                            })
-                            if len(results) >= max_results:
-                                break
-        except Exception as e:
-            print(f"DDG Instant Answer error: {e}")
-
-    # Official domain injection & re-ranking for official queries
-    if "official" in q_lower or any(domain in q_lower for domain in ["aws", "openai", "microsoft"]):
-        if "aws" in q_lower and ("ai practitioner" in q_lower or "certification" in q_lower):
-            official_url = "https://aws.amazon.com/certification/certified-ai-practitioner/"
-            official_title = "AWS Certified AI Practitioner - Official Site"
-            if not any(r["url"] == official_url for r in results):
-                results.insert(0, {
-                    "title": official_title,
-                    "url": official_url,
-                    "snippet": "Official AWS Certified AI Practitioner certification page. Validates foundational knowledge of AI, machine learning, and generative AI on AWS."
-                })
-        elif "openai" in q_lower:
-            official_url = "https://openai.com/"
-            official_title = "OpenAI - Official Website"
-            if not any(r["url"] == official_url for r in results):
-                results.insert(0, {
-                    "title": official_title,
-                    "url": official_url,
-                    "snippet": "Official OpenAI website. Research and deployment of frontier AI models including flagship reasoning and multimodal models."
-                })
-        elif "microsoft" in q_lower and "ceo" in q_lower:
-            official_url = "https://news.microsoft.com/exec/satya-nadella/"
-            official_title = "Satya Nadella - Chairman and CEO, Microsoft"
-            if not any(r["url"] == official_url for r in results):
-                results.insert(0, {
-                    "title": official_title,
-                    "url": official_url,
-                    "snippet": "Official Microsoft Executive Profile for Satya Nadella, Chairman and Chief Executive Officer of Microsoft."
-                })
-
-    # Re-rank results for official domains and semantic match
-    if "ai practitioner" in q_lower:
-        results.sort(key=lambda r: 0 if "aws.amazon.com" in r["url"].lower() or "ai practitioner" in r["title"].lower() else 1)
-    elif "openai" in q_lower:
-        results.sort(key=lambda r: 0 if "openai.com" in r["url"].lower() else 1)
-    elif "microsoft" in q_lower and "ceo" in q_lower:
-        results.sort(key=lambda r: 0 if "microsoft.com" in r["url"].lower() or "satya" in r["title"].lower() else 1)
-
-    # Fetch deep page content for top 2 web results
-    for r in results[:2]:
-        if not r.get("content"):
-            page_text = await fetch_page_content(r["url"])
-            if page_text:
-                r["content"] = page_text
-            else:
-                r["content"] = r["snippet"]
-
-    # Final Fallback (only if all APIs/scrapers failed)
-    if not results:
-        results = [
-            {
-                "title": f"Search Link (External): '{query}'",
-                "url": f"https://www.google.com/search?q={urllib.parse.quote(query)}",
-                "snippet": f"[Note: Live web facts could not be retrieved from public search APIs for '{query}'. This is an external search query link only.]",
-                "content": ""
-            }
-        ]
-        
-    return results
 
 NLU_BASE_PROMPT = (
     "You are AI Mega Assistant, a natural, highly accurate, and intelligent AI conversational assistant (ChatGPT-like).\n"
@@ -2968,22 +2658,13 @@ AGENT_INSTRUCTIONS = {
     "vault": (
         "You are the AI Memory & Personal Knowledge Vault Agent. You specialize in managing long-term user memories, saved notes, project ideas, knowledge collections, and personal references.\n"
         "Explain saved items, retrieve context from past sessions, organize notes, and verify user consent before saving new preferences."
-    ),
-    "web_research": (
-        "You are the Web Research & Real-Time Information Agent. You specialize in retrieving up-to-date details, recent news, software versions, current dates/times, stock prices, and official documentation.\n"
-        "Explain real-time concepts using the retrieved web search grounding context, and cite your sources cleanly."
     )
 }
 
 def route_agent_local(message: str) -> str:
     msg_lower = normalize_nlu_message(message)
-    
-    # 1. Web Research/Real-Time keywords
-    web_research_kws = ["latest version", "python version", "cricket match", "youtube channels", "react documentation", "react docs", "latest news", "stock price", "exchange rate", "today's date", "current time", "what is the date", "weather today", "price of bitcoin", "who won"]
-    if any(kw in msg_lower for kw in web_research_kws):
-        return "web_research"
 
-    # 2. Vault/Memory keywords
+    # 1. Vault/Memory keywords
     vault_kws = ["remember that", "what do i prefer", "what programming language", "save this project", "personal knowledge vault", "show my saved notes", "saved notes", "my memories", "view memories", "clear stored data", "my preferences", "delete memory"]
     if any(kw in msg_lower for kw in vault_kws):
         return "vault"
@@ -3228,7 +2909,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     
     # Check if a single local fast response is sufficient (pure tool intent, no assistant/chat intents)
     fast_eligible = ["date_time", "calendar", "qr_generator", "barcode_generator", "currency_converter", "unit_converter", "calculator", "table_generator", "chart_generator"]
-    is_pure_tool = len(intents) > 0 and all(i in fast_eligible for i in intents) and not any(i in ["coding_assistant", "writing_assistant", "education_assistant", "math_assistant", "web_search", "general_chat"] for i in intents)
+    is_pure_tool = len(intents) > 0 and all(i in fast_eligible for i in intents) and not any(i in ["coding_assistant", "writing_assistant", "education_assistant", "math_assistant", "general_chat"] for i in intents)
     
     if is_pure_tool and tool_outputs:
         reply_parts = []
@@ -4042,8 +3723,6 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                 "writing_assistant": "writing",
                 "education_assistant": "education",
                 "math_assistant": "math",
-                "web_search": "web_research",
-                "web_research": "web_research",
                 "education": "education"
             }
             mapped_agent = "general"
@@ -4056,35 +3735,11 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
             else:
                 agent_key = await route_agent(routing_msg)
 
-    # Determine if web search is needed automatically
-    should_search = request.web_search or (agent_key == "web_research")
-
-    # Query Web Search if active
     sources = []
-    if should_search and request.message.strip():
-        search_results = await search_duckduckgo(request.message.strip())
-        sources = [
-            {
-                "title": r["title"],
-                "url": r["url"],
-                "timestamp": datetime.datetime.now().isoformat()
-            }
-            for r in search_results
-        ]
-        search_context = "[WEB SEARCH GROUNDING INFO - Refer to these facts to construct an accurate, up-to-date answer:\n"
-        for idx, r in enumerate(search_results):
-            search_context += f"Source [{idx+1}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n"
-            if r.get("content"):
-                search_context += f"Extracted Page Text:\n{r['content'][:1500]}\n"
-            search_context += "\n"
-        search_context += "]"
-        parts.insert(0, {"text": search_context})
 
     agent_name = agent_key.capitalize()
     if agent_key == "research":
         agent_name = "Research Scientist"
-    elif agent_key == "web_research":
-        agent_name = "Web Research Agent"
     original_agent_prompt = AGENT_INSTRUCTIONS.get(agent_key, AGENT_INSTRUCTIONS["general"])
     agent_prompt = f"{NLU_BASE_PROMPT}\n{original_agent_prompt}"
     
@@ -4120,8 +3775,6 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
             restored_agent_key = previous_agent.lower()
             if restored_agent_key == "research scientist":
                 restored_agent_key = "research"
-            elif restored_agent_key == "web research agent":
-                restored_agent_key = "web_research"
             
             agent_key = restored_agent_key
             agent_name = previous_agent
@@ -4219,25 +3872,9 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         "contents": contents
     }
 
-    if sources:
-        search_instruction = (
-            "You are a helpful AI assistant with real-time web search capabilities.\n"
-            "You MUST use the provided real-time internet search results context (WEB SEARCH GROUNDING INFO) to answer the user's query.\n"
-            "CRITICAL SEARCH GROUNDING DIRECTIVES:\n"
-            "1. GROUNDING & STRICT TRUTH: Base all factual claims, names, versions, products, weather data, and headlines strictly on the provided WEB SEARCH GROUNDING INFO. Do NOT invent or rely on outdated static memory when grounded web context is provided.\n"
-            "2. TEMPORAL ACCURACY: For current weather, latest news, current flagship AI models, or recent events, prioritize the live retrieved evidence and state the facts directly.\n"
-            "3. OFFICIAL SOURCES: If the query asks for official courses, websites, or models, use facts from official domain links (e.g. aws.amazon.com, openai.com) present in the results, and cite those official URLs directly.\n"
-            "4. CITATION FORMATTING: Cite all sources using Markdown links with descriptive title or index (e.g. '[AWS AI Practitioner](https://...)' or '[Source Title](https://...)').\n"
-            "5. NO FLUFF: Synthesize an immediate, concise, direct summary of the facts/news/weather. Do NOT just tell the user to visit websites or list search engines."
-        )
-        combined_prompt = f"{agent_prompt}\n\n{search_instruction}"
-        payload["systemInstruction"] = {
-            "parts": [{"text": combined_prompt}]
-        }
-    else:
-        payload["systemInstruction"] = {
-            "parts": [{"text": agent_prompt}]
-        }
+    payload["systemInstruction"] = {
+        "parts": [{"text": agent_prompt}]
+    }
 
     # Append user message to history
     user_msg = {

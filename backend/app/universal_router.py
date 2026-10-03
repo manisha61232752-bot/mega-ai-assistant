@@ -90,15 +90,10 @@ AGENT_REGISTRY = {
     "vault": {
         "name": "Memory & Knowledge Vault Agent",
         "description": "Stores permanent memories, long-term preferences, saved notes, project logs."
-    },
-    "web_research": {
-        "name": "Web Research Agent",
-        "description": "Fetches current/latest information, sports scores, weather details, stock prices."
     }
 }
 
 TOOL_REGISTRY = {
-    "web_search": "Retrieves real-time updates, news, weather, prices, or sports scores from the internet.",
     "calculator": "Calculates math equations, arithmetic expressions, or EMI mortgage parameters.",
     "calendar": "Generates a visual HTML monthly calendar display or counts countdown days left.",
     "date_time": "Retrieves the current system date and time details.",
@@ -386,7 +381,6 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
     steps = plan.get("steps") if (plan and plan.get("steps")) else intents
     
     calculated_val = None
-    search_data = None
     
     # 1. Execute Calculator Step
     if "calculator" in steps:
@@ -408,26 +402,8 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
                     mock_emi = (principal * 1.08) / 12
                     calculated_val = f"${mock_emi:.2f}/month"
                     outputs["calculator"] = f"EMI Calculation: {calculated_val}"
-                    
-    # 2. Execute Web Search Step
-    if "web_search" in steps or "web_search" in intents:
-        query = plan.get("search_query") if plan else msg_clean
-        try:
-            from app.main import search_duckduckgo
-            search_results = await search_duckduckgo(query)
-            if search_results:
-                search_str = ""
-                for idx, r in enumerate(search_results[:3]):
-                    search_str += f"[{idx+1}] {r['title']} - {r['url']}\nSnippet: {r['snippet']}\n"
-                    if r.get('content'):
-                        search_str += f"Content: {r['content'][:800]}\n"
-                    search_str += "\n"
-                search_data = search_str
-                outputs["web_search"] = search_str
-        except Exception as e:
-            print("Web Search failed:", e)
 
-    # 3. Execute Date & Time Step
+    # 2. Execute Date & Time Step
     if "date_time" in steps:
         now = datetime.datetime.now()
         outputs["date_time"] = now.strftime("%A, %B %d, %Y • %I:%M:%S %p")
@@ -470,8 +446,6 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
                 content = f"Note auto-generated from user request.\n"
                 if calculated_val:
                     content += f"Calculator Result: {calculated_val}\n"
-                if search_data:
-                    content += f"Grounding Info:\n{search_data[:300]}\n"
                     
             new_note = {
                 "id": str(uuid.uuid4()),
