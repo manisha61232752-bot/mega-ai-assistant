@@ -418,7 +418,10 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
             if search_results:
                 search_str = ""
                 for idx, r in enumerate(search_results[:3]):
-                    search_str += f"[{idx+1}] {r['title']} - {r['url']}\nSnippet: {r['snippet']}\n\n"
+                    search_str += f"[{idx+1}] {r['title']} - {r['url']}\nSnippet: {r['snippet']}\n"
+                    if r.get('content'):
+                        search_str += f"Content: {r['content'][:800]}\n"
+                    search_str += "\n"
                 search_data = search_str
                 outputs["web_search"] = search_str
         except Exception as e:
