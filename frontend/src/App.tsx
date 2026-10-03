@@ -4711,6 +4711,81 @@ export default function App() {
       return placeholder;
     });
 
+    // 3.5. Extract Markdown Tables before paragraph line-splitting
+    const tableBlocks: string[] = [];
+    cleaned = cleaned.replace(/(?:(?:^[ \t]*\|[^\n]+\|[ \t]*)(?:\n|$))+/gm, (tableMatch) => {
+      const rawLines = tableMatch.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (rawLines.length < 2) return tableMatch;
+
+      // Check if second line is a valid separator line (e.g. | --- | :---: | ---: | or |---|---|)
+      const isSeparator = (line: string) => {
+        const trimmed = line.trim();
+        return /^\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?$/.test(trimmed);
+      };
+
+      if (!isSeparator(rawLines[1])) return tableMatch;
+
+      const parseRowCells = (rowStr: string) => {
+        let content = rowStr.trim();
+        if (content.startsWith('|')) content = content.slice(1);
+        if (content.endsWith('|')) content = content.slice(0, -1);
+        return content.split('|').map(cell => cell.trim());
+      };
+
+      const formatCellInline = (cellText: string) => {
+        let cellHtml = cellText
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        cellHtml = cellHtml.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-white">$1</strong>');
+        cellHtml = cellHtml.replace(/__(.*?)__/g, '<strong class="font-bold text-slate-900 dark:text-white">$1</strong>');
+        cellHtml = cellHtml.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
+        cellHtml = cellHtml.replace(/_(.*?)_/g, '<em class="italic">$1</em>');
+        cellHtml = cellHtml.replace(/`(.*?)`/g, '<code class="bg-slate-200/70 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-xs text-indigo-600 dark:text-indigo-400 font-medium">$1</code>');
+        cellHtml = cellHtml.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 font-semibold underline hover:text-indigo-700 dark:hover:text-indigo-300">$1</a>');
+        return cellHtml;
+      };
+
+      const headerCells = parseRowCells(rawLines[0]);
+      const alignCells = parseRowCells(rawLines[1]);
+
+      const alignments = alignCells.map(col => {
+        const trimmed = col.trim();
+        if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'text-center';
+        if (trimmed.endsWith(':')) return 'text-right';
+        return 'text-left';
+      });
+
+      const bodyLines = rawLines.slice(2);
+
+      const theadHtml = `<thead><tr class="bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">` +
+        headerCells.map((cellText, i) => {
+          const alignClass = alignments[i] || 'text-left';
+          return `<th class="px-3.5 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 ${alignClass} border-r border-slate-200/60 dark:border-slate-700/60 last:border-r-0">${formatCellInline(cellText)}</th>`;
+        }).join('') +
+        `</tr></thead>`;
+
+      const tbodyRows = bodyLines.map((rowLine, rowIndex) => {
+        const cells = parseRowCells(rowLine);
+        const bgClass = rowIndex % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/50 dark:bg-slate-950/30';
+        return `<tr class="${bgClass} border-b border-slate-200/60 dark:border-slate-800 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors">` +
+          headerCells.map((_, i) => {
+            const cellText = cells[i] !== undefined ? cells[i] : '';
+            const alignClass = alignments[i] || 'text-left';
+            return `<td class="px-3.5 py-2 text-xs text-slate-800 dark:text-slate-200 ${alignClass} border-r border-slate-200/40 dark:border-slate-800/60 last:border-r-0">${formatCellInline(cellText)}</td>`;
+          }).join('') +
+          `</tr>`;
+      }).join('');
+
+      const tbodyHtml = `<tbody>${tbodyRows}</tbody>`;
+
+      const tableHtml = `<div class="my-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs max-w-full"><table class="w-full text-left border-collapse min-w-full">${theadHtml}${tbodyHtml}</table></div>`;
+
+      const placeholder = `%%TABLEBLOCK${tableBlocks.length}%%`;
+      tableBlocks.push(tableHtml);
+      return placeholder;
+    });
+
     // 4. HTML escape remaining text
     let html = cleaned
       .replace(/&/g, "&amp;")
@@ -4746,7 +4821,7 @@ export default function App() {
     html = html.split('\n').map(line => {
       const l = line.trim();
       if (l === '') return '<div class="h-1.5"></div>';
-      if (l.startsWith('<h') || l.startsWith('<li') || l.startsWith('<block') || l.startsWith('<hr') || l.startsWith('<div') || l.includes('%%CODEBLOCK')) {
+      if (l.startsWith('<h') || l.startsWith('<li') || l.startsWith('<block') || l.startsWith('<hr') || l.startsWith('<div') || l.includes('%%CODEBLOCK') || l.includes('%%TABLEBLOCK')) {
         return line;
       }
       return `<p class="mb-2 text-slate-800 dark:text-slate-200 leading-relaxed">${line}</p>`;
@@ -4763,9 +4838,12 @@ export default function App() {
     // 13. Blockquotes
     html = html.replace(/^&gt;\s+(.*?)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-3 italic text-slate-600 dark:text-slate-400 my-2">$1</blockquote>');
 
-    // 14. Re-insert code block HTML placeholders
+    // 14. Re-insert code block & table block HTML placeholders
     codeBlocks.forEach((blockHtml, i) => {
       html = html.replace(`%%CODEBLOCK${i}%%`, blockHtml);
+    });
+    tableBlocks.forEach((tableHtml, i) => {
+      html = html.replace(`%%TABLEBLOCK${i}%%`, tableHtml);
     });
 
     return html;
@@ -9524,10 +9602,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Footer warning info */}
-            <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 mt-2 tracking-wider">
-              Mega Assistant Developer console. Integration active. Local sandbox responses.
-            </p>
+
           </div>
         </div>
         </div>

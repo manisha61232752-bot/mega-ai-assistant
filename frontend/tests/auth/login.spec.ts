@@ -47,7 +47,7 @@ test.describe('Authentication E2E Flow Tests', () => {
       const logoutBtn = page.getByRole('button', { name: /Logout|Sign Out/i }).first();
       if (await logoutBtn.isVisible()) {
         await logoutBtn.click();
-        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(1000);
         await expect(page.locator('#root')).toBeVisible();
       }
     }

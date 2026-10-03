@@ -46,7 +46,7 @@ export async function loginUser(page: Page) {
     await emailInput.fill(creds.email);
     await passwordInput.fill(creds.password);
     await page.getByRole('button', { name: /sign in|log in|submit/i }).click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
   }
   return true;
 }

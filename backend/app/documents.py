@@ -391,7 +391,6 @@ async def generate_document(req: GenerateRequest, authorization: Optional[str] =
     sys_instruction = system_prompts.get(req.type, "Generate a professional document in Markdown format.")
     prompt = f"Please generate a professional {req.type.replace('_', ' ')} based on the following user input and details:\n\n{req.prompt}\n\nMake sure the document is highly polished, professional, and well-structured in markdown format."
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
     payload = {
         "contents": [
             {"parts": [{"text": prompt}]}
@@ -402,21 +401,25 @@ async def generate_document(req: GenerateRequest, authorization: Optional[str] =
     }
     
     try:
-        print(f"[DOC GENERATE] Calling Gemini API URL: https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key=HIDDEN")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=30.0)
-            
-        print(f"[DOC GENERATE] Gemini API returned status: {response.status_code}")
-        if response.status_code != 200:
-            print(f"[DOC GENERATE] Gemini Error Details: {response.text}")
-            if response.status_code == 429 or "quota" in response.text.lower():
-                print("[DOC GENERATE] Rate limit/quota exceeded. Using local fallback generator.")
-                return generate_local_fallback_document(req.type, req.prompt)
-            raise HTTPException(status_code=response.status_code, detail=f"Gemini API returned error: {response.text}")
-            
-        data = response.json()
-        content = data["candidates"][0]["content"]["parts"][0]["text"]
-        print(f"[DOC GENERATE] Gemini successfully returned {len(content)} characters of text.")
+        from app.services.ai_provider import global_ai_orchestrator
+        ai_res = await global_ai_orchestrator.generate_with_resilience(
+            req_id=f"doc_gen_{uuid.uuid4().hex[:8]}",
+            user_id=user["sub"],
+            prompt=prompt,
+            payload=payload,
+            is_personalized=True
+        )
+
+        if ai_res.get("error") or ai_res.get("provider") == "none":
+            print(f"[DOC GENERATE] AI provider unavailable/failed ({ai_res.get('error_category')}). Using local fallback generator.")
+            return generate_local_fallback_document(req.type, req.prompt)
+
+        content = ai_res.get("text", "")
+        if not content:
+            print("[DOC GENERATE] Empty AI response. Using local fallback generator.")
+            return generate_local_fallback_document(req.type, req.prompt)
+
+        print(f"[DOC GENERATE] Successfully generated document ({len(content)} chars) via {ai_res.get('provider')}.")
         
         # Simple Title extraction from the first line or markdown headers
         lines = content.split('\n')
@@ -436,13 +439,11 @@ async def generate_document(req: GenerateRequest, authorization: Optional[str] =
             "content": content,
             "type": req.type
         }
-    except HTTPException as he:
-        raise he
     except Exception as e:
         import traceback
-        print("[DOC GENERATE] Python Exception Traceback:")
+        print("[DOC GENERATE] Exception traceback:")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
+        return generate_local_fallback_document(req.type, req.prompt)
 
 # AI Features: Refine/Edit Document
 @router.post("/refine")
@@ -466,7 +467,6 @@ async def refine_document(req: RefineRequest, authorization: Optional[str] = Hea
     else:
         raise HTTPException(status_code=400, detail="Invalid refinement action specified")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
     payload = {
         "contents": [
             {"parts": [{"text": prompt}]}
@@ -477,30 +477,33 @@ async def refine_document(req: RefineRequest, authorization: Optional[str] = Hea
     }
     
     try:
-        print(f"\n[DOC REFINE] Calling Gemini API URL for action {req.action}")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=30.0)
-            
-        print(f"[DOC REFINE] Gemini API returned status: {response.status_code}")
-        if response.status_code != 200:
-            print(f"[DOC REFINE] Gemini Error Details: {response.text}")
-            if response.status_code == 429 or "quota" in response.text.lower():
-                print("[DOC REFINE] Rate limit/quota exceeded. Using local fallback refiner.")
-                refined_text = refine_local_fallback_document(req.action, req.content, req.target_tone, req.target_lang)
-                return {"content": refined_text}
-            raise HTTPException(status_code=response.status_code, detail=f"Gemini API returned error: {response.text}")
-            
-        data = response.json()
-        refined_content = data["candidates"][0]["content"]["parts"][0]["text"]
-        print(f"[DOC REFINE] Gemini successfully returned {len(refined_content)} characters of text.")
+        from app.services.ai_provider import global_ai_orchestrator
+        ai_res = await global_ai_orchestrator.generate_with_resilience(
+            req_id=f"doc_refine_{uuid.uuid4().hex[:8]}",
+            user_id=user["sub"],
+            prompt=prompt,
+            payload=payload,
+            is_personalized=True
+        )
+
+        if ai_res.get("error") or ai_res.get("provider") == "none":
+            print(f"[DOC REFINE] AI provider unavailable/failed ({ai_res.get('error_category')}). Using local fallback refiner.")
+            refined_text = refine_local_fallback_document(req.action, req.content, req.target_tone, req.target_lang)
+            return {"content": refined_text}
+
+        refined_content = ai_res.get("text", "")
+        if not refined_content:
+            refined_text = refine_local_fallback_document(req.action, req.content, req.target_tone, req.target_lang)
+            return {"content": refined_text}
+
+        print(f"[DOC REFINE] Successfully refined document ({len(refined_content)} chars) via {ai_res.get('provider')}.")
         return {"content": refined_content}
-    except HTTPException as he:
-        raise he
     except Exception as e:
         import traceback
-        print("[DOC REFINE] Python Exception Traceback:")
+        print("[DOC REFINE] Exception traceback:")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"AI refinement failed: {str(e)}")
+        refined_text = refine_local_fallback_document(req.action, req.content, req.target_tone, req.target_lang)
+        return {"content": refined_text}
 
 TRANSLATION_DICT = {
     "Hindi": {
@@ -810,37 +813,36 @@ async def translate_text(req: TranslateRequest, authorization: Optional[str] = H
     }
     
     try:
-        print(f"[TRANSLATE] Calling Gemini API URL: https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key=HIDDEN")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=30.0)
-            
-        print(f"[TRANSLATE] Gemini API returned status: {response.status_code}")
-        if response.status_code != 200:
-            print(f"[TRANSLATE] Gemini Error Details: {response.text}")
-            if response.status_code == 429 or "quota" in response.text.lower():
-                print("[TRANSLATE] Rate limit/quota exceeded. Using local fallback translator.")
-                return translate_local_fallback(req.text, req.source_lang, req.target_lang)
-            raise HTTPException(status_code=response.status_code, detail=f"Gemini API returned error: {response.text}")
-            
-        data = response.json()
-        raw_response = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        
+        from app.services.ai_provider import global_ai_orchestrator
+        ai_res = await global_ai_orchestrator.generate_with_resilience(
+            req_id=f"doc_trans_{uuid.uuid4().hex[:8]}",
+            user_id=user["sub"],
+            prompt=prompt,
+            payload=payload,
+            is_personalized=False
+        )
+
+        if ai_res.get("error") or ai_res.get("provider") == "none":
+            print(f"[TRANSLATE] AI provider unavailable/failed ({ai_res.get('error_category')}). Using local fallback translator.")
+            return translate_local_fallback(req.text, req.source_lang, req.target_lang)
+
+        raw_response = ai_res.get("text", "").strip()
         if raw_response.startswith("```json"):
             raw_response = raw_response[7:]
+        if raw_response.startswith("```"):
+            raw_response = raw_response[3:]
         if raw_response.endswith("```"):
             raw_response = raw_response[:-3]
         raw_response = raw_response.strip()
-        
+
         parsed = json.loads(raw_response)
         return {
             "detected_language": parsed.get("detected_language", "Auto Detected"),
             "translated_text": parsed.get("translated_text", req.text)
         }
-    except HTTPException as he:
-        raise he
     except Exception as e:
         import traceback
-        print("[TRANSLATE] Python Exception Traceback:")
+        print("[TRANSLATE] Exception traceback:")
         traceback.print_exc()
         print("[TRANSLATE] Falling back to local translation due to parsing/other error.")
         return translate_local_fallback(req.text, req.source_lang, req.target_lang)
@@ -859,8 +861,6 @@ async def rewrite_document_tone(req: RewriteRequest, authorization: Optional[str
     user = await get_user(authorization)
     
     print(f"\n[REWRITE] Request received: tone={req.tone}, text_len={len(req.text)}")
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
     
     prompt = (
         f"You are a professional AI writing assistant. Your task is to rewrite the input text in a '{req.tone}' style/tone.\n"
@@ -882,22 +882,20 @@ async def rewrite_document_tone(req: RewriteRequest, authorization: Optional[str
     }
     
     try:
-        print(f"[REWRITE] Calling Gemini API URL: https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key=HIDDEN")
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload, timeout=30.0)
-            
-        print(f"[REWRITE] Gemini API returned status: {response.status_code}")
-        if response.status_code != 200:
-            print(f"[REWRITE] Gemini Error Details: {response.text}")
-            if response.status_code == 429 or "quota" in response.text.lower():
-                print("[REWRITE] Rate limit/quota exceeded. Using local fallback rewriter.")
-                return rewrite_local_fallback(req.text, req.tone, req.custom_tone_instruction)
-            raise HTTPException(status_code=response.status_code, detail=f"Gemini API returned error: {response.text}")
-            
-        data = response.json()
-        rewritten = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        
-        # Clean up any potential markdown wrapper
+        from app.services.ai_provider import global_ai_orchestrator
+        ai_res = await global_ai_orchestrator.generate_with_resilience(
+            req_id=f"doc_rewrite_{uuid.uuid4().hex[:8]}",
+            user_id=user["sub"],
+            prompt=prompt,
+            payload=payload,
+            is_personalized=False
+        )
+
+        if ai_res.get("error") or ai_res.get("provider") == "none":
+            print(f"[REWRITE] AI provider unavailable/failed ({ai_res.get('error_category')}). Using local fallback rewriter.")
+            return rewrite_local_fallback(req.text, req.tone, req.custom_tone_instruction)
+
+        rewritten = ai_res.get("text", "").strip()
         if rewritten.startswith("```markdown"):
             rewritten = rewritten[11:]
         elif rewritten.startswith("```"):
@@ -905,15 +903,13 @@ async def rewrite_document_tone(req: RewriteRequest, authorization: Optional[str
         if rewritten.endswith("```"):
             rewritten = rewritten[:-3]
         rewritten = rewritten.strip()
-        
+
         return {
             "rewritten_text": rewritten
         }
-    except HTTPException as he:
-        raise he
     except Exception as e:
         import traceback
-        print("[REWRITE] Python Exception Traceback:")
+        print("[REWRITE] Exception traceback:")
         traceback.print_exc()
         print("[REWRITE] Falling back to local rewrite due to error.")
         return rewrite_local_fallback(req.text, req.tone, req.custom_tone_instruction)
