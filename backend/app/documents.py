@@ -42,6 +42,10 @@ class RewriteRequest(BaseModel):
     tone: str
     custom_tone_instruction: Optional[str] = None
 
+class ExportPayload(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
 from app.database import documents_collection
 
 def load_documents():
@@ -1137,51 +1141,84 @@ def generate_docx_in_memory(title: str, content: str) -> io.BytesIO:
     buffer.seek(0)
     return buffer
 
-# Export Endpoint: Download fileResponse directly
-@router.get("/{doc_id}/export/{format}")
-async def export_document(doc_id: str, format: str, authorization: Optional[str] = Header(None)):
+# Export Endpoint: Download fileResponse directly (supports GET & POST, by ID or in-memory payload)
+@router.api_route("/{doc_id}/export/{format}", methods=["GET", "POST"])
+@router.api_route("/export/{format}", methods=["GET", "POST"])
+async def export_document(
+    format: str,
+    doc_id: Optional[str] = "new",
+    payload: Optional[ExportPayload] = None,
+    authorization: Optional[str] = Header(None)
+):
     user = await get_user(authorization)
-    docs = load_documents()
-    target_doc = None
-    for d in docs:
-        if d["id"] == doc_id and d["user_id"] == user["sub"]:
-            target_doc = d
-            break
-            
-    if not target_doc:
-        raise HTTPException(status_code=404, detail="Document not found")
-        
-    title_sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '_', target_doc["title"])
-    content = target_doc["content"]
     
-    if format == "pdf":
-        file_stream = generate_pdf_in_memory(target_doc["title"], content)
+    title = payload.title if payload else None
+    content = payload.content if payload else None
+    
+    if not content and doc_id and doc_id != "new":
+        try:
+            doc = await documents_collection.find_one({"id": doc_id, "user_id": user["sub"]}, {"_id": 0})
+            if doc:
+                title = doc.get("title")
+                content = doc.get("content")
+        except Exception as e:
+            print("[MongoDB export_document error]:", e)
+            
+        if not content:
+            docs = load_documents()
+            for d in docs:
+                if d["id"] == doc_id and d["user_id"] == user["sub"]:
+                    title = d.get("title")
+                    content = d.get("content")
+                    break
+                    
+    if not content:
+        raise HTTPException(status_code=404, detail="Document content not found for export")
+        
+    title = title or "Document"
+    title_sanitized = re.sub(r'[^a-zA-Z0-9_\-]', '_', title) or "document"
+    fmt = format.lower()
+    
+    if fmt == "pdf":
+        file_stream = generate_pdf_in_memory(title, content)
         return StreamingResponse(
             file_stream,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={title_sanitized}.pdf"}
+            headers={
+                "Content-Disposition": f'attachment; filename="{title_sanitized}.pdf"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
-    elif format == "docx":
-        file_stream = generate_docx_in_memory(target_doc["title"], content)
+    elif fmt == "docx":
+        file_stream = generate_docx_in_memory(title, content)
         return StreamingResponse(
             file_stream,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f"attachment; filename={title_sanitized}.docx"}
+            headers={
+                "Content-Disposition": f'attachment; filename="{title_sanitized}.docx"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
-    elif format == "txt":
+    elif fmt == "txt":
         plain_text = re.sub(r'[#\*\`\>]', '', content)
         file_stream = io.BytesIO(plain_text.encode("utf-8"))
         return StreamingResponse(
             file_stream,
             media_type="text/plain",
-            headers={"Content-Disposition": f"attachment; filename={title_sanitized}.txt"}
+            headers={
+                "Content-Disposition": f'attachment; filename="{title_sanitized}.txt"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
-    elif format == "markdown":
+    elif fmt in ("markdown", "md"):
         file_stream = io.BytesIO(content.encode("utf-8"))
         return StreamingResponse(
             file_stream,
             media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename={title_sanitized}.md"}
+            headers={
+                "Content-Disposition": f'attachment; filename="{title_sanitized}.md"',
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid export format. Choose pdf, docx, txt, or markdown.")

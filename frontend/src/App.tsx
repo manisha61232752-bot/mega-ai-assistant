@@ -2769,15 +2769,25 @@ export default function App() {
 
   const handleExportDocument = (docId: string, format: string) => {
     if (!user) return;
-    const url = `${apiUrl}/api/documents/${docId}/export/${format}`;
+    const formatNormalized = format === 'markdown' ? 'md' : format;
+    const url = `${apiUrl}/api/documents/${docId}/export/${formatNormalized}`;
     
+    const title = docTitleInput || activeDocument?.title || "document";
+    const content = docContentInput || activeDocument?.content || "";
+
     fetch(url, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${user.token}`
-      }
+      },
+      body: JSON.stringify({
+        title: title,
+        content: content
+      })
     })
       .then(res => {
-        if (!res.ok) throw new Error("Failed to export");
+        if (!res.ok) throw new Error("Failed to export document");
         return res.blob();
       })
       .then(blob => {
@@ -2785,9 +2795,9 @@ export default function App() {
         const a = window.document.createElement('a');
         a.href = downloadUrl;
         
-        const title = activeDocument?.title || "document";
-        const ext = format === "markdown" ? "md" : format;
-        a.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${ext}`;
+        const ext = formatNormalized === "markdown" ? "md" : formatNormalized;
+        const cleanTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '_') || "document";
+        a.download = `${cleanTitle}.${ext}`;
         
         window.document.body.appendChild(a);
         a.click();
@@ -5130,20 +5140,19 @@ export default function App() {
                       <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>
                       
                       {/* Export format buttons */}
-                      {activeDocument.id !== 'new' ? (
+                      {activeDocument && (
                         <div className="flex gap-1">
                           {['pdf', 'docx', 'txt', 'markdown'].map(fmt => (
                             <button
                               key={fmt}
                               onClick={() => handleExportDocument(activeDocument.id, fmt)}
                               className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase rounded-lg text-slate-650 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                              title={`Export as ${fmt === 'markdown' ? 'MD' : fmt.toUpperCase()}`}
                             >
                               {fmt === 'markdown' ? 'MD' : fmt}
                             </button>
                           ))}
                         </div>
-                      ) : (
-                        <span className="text-[9px] text-slate-400 italic">Save document first to download</span>
                       )}
                     </div>
                   </div>
