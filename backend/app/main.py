@@ -888,6 +888,20 @@ def extract_text_from_docx(filepath: str) -> str:
     except Exception as e:
         return f"Error extracting text from DOCX document: {e}"
 
+def extract_text_from_pdf(filepath: str) -> str:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(filepath)
+        extracted = []
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                extracted.append(t)
+        return "\n".join(extracted).strip()
+    except Exception as e:
+        print("[PDF Text Extraction Warning]:", e)
+        return ""
+
 # Auth Endpoints
 @app.post("/api/auth/register")
 async def register_endpoint(req: RegisterRequest):
@@ -3520,6 +3534,15 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                 }
             })
             
+            if file_type == ".pdf":
+                extracted_pdf_text = extract_text_from_pdf(temp_filepath)
+                if extracted_pdf_text:
+                    MAX_PDF_TEXT_LEN = 15000
+                    if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
+                        extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
+                    pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
+                    parts.append({"text": pdf_prompt})
+
             prompt_text = request.message.strip()
             if not prompt_text:
                 prompt_text = "Analyze and explain this document." if file_type == ".pdf" else "Describe this image in detail."
