@@ -948,7 +948,9 @@ export default function App() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(blobUrl);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 2000);
     } catch (error) {
       console.error("Failed to download image:", error);
     }
