@@ -889,6 +889,7 @@ def extract_text_from_docx(filepath: str) -> str:
         return f"Error extracting text from DOCX document: {e}"
 
 def extract_text_from_pdf(filepath: str) -> str:
+    extracted_text = ""
     try:
         from pypdf import PdfReader
         reader = PdfReader(filepath)
@@ -897,10 +898,30 @@ def extract_text_from_pdf(filepath: str) -> str:
             t = page.extract_text()
             if t:
                 extracted.append(t)
-        return "\n".join(extracted).strip()
+        extracted_text = "\n".join(extracted).strip()
     except Exception as e:
-        print("[PDF Text Extraction Warning]:", e)
-        return ""
+        print("[PDF Text Extraction Warning (pypdf)]:", e)
+
+    if not extracted_text:
+        try:
+            with open(filepath, "rb") as f:
+                raw_bytes = f.read()
+            matches = re.findall(rb'\((.*?)\)\s*Tj', raw_bytes)
+            if matches:
+                decoded_snippets = []
+                for m in matches:
+                    try:
+                        s = m.decode("utf-8", errors="ignore").strip()
+                        if len(s) > 2:
+                            decoded_snippets.append(s)
+                    except Exception:
+                        pass
+                if decoded_snippets:
+                    extracted_text = " ".join(decoded_snippets).strip()
+        except Exception as fe:
+            print("[PDF Fallback Text Extraction Warning]:", fe)
+
+    return extracted_text
 
 # Auth Endpoints
 @app.post("/api/auth/register")
@@ -3542,8 +3563,10 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                     if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
                         extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
                     pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
-                    file_text_context = pdf_prompt
-                    parts.append({"text": pdf_prompt})
+                else:
+                    pdf_prompt = f"[Attached PDF Content: {filename}]\n[Note: Unable to extract text stream from PDF file. Process document context accordingly.]\n"
+                file_text_context = pdf_prompt
+                parts.append({"text": pdf_prompt})
 
             prompt_text = request.message.strip()
             if not prompt_text:
