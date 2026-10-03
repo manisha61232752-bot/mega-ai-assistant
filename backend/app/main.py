@@ -3498,6 +3498,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={settings.GEMINI_API_KEY}"
     
     parts = []
+    file_text_context = ""
     
     # Process attached file metadata
     if request.file:
@@ -3541,6 +3542,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                     if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
                         extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
                     pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
+                    file_text_context = pdf_prompt
                     parts.append({"text": pdf_prompt})
 
             prompt_text = request.message.strip()
@@ -3565,6 +3567,8 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                 lang = file_type.replace(".", "")
                 file_prompt += f"```{lang}\n{extracted_text}\n```\n"
                 
+            file_text_context = file_prompt
+
             if request.message.strip():
                 file_prompt += f"\nUser Instruction: {request.message.strip()}"
             else:
@@ -3859,6 +3863,37 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         for msg in final_messages:
             role = "user" if msg["sender"] == "user" else "model"
             text_str = msg.get("text", "").strip()
+            if role == "user":
+                file_text = msg.get("file_text", "")
+                if not file_text and msg.get("file"):
+                    file_info = msg.get("file")
+                    if isinstance(file_info, dict):
+                        f_id = file_info.get("file_id")
+                        f_name = file_info.get("filename", "file")
+                        f_type = file_info.get("file_type", "").lower()
+                        if f_id:
+                            f_path = os.path.join(TEMP_UPLOAD_DIR, f_id)
+                            if os.path.exists(f_path):
+                                if f_type == ".pdf":
+                                    ext_text = extract_text_from_pdf(f_path)
+                                    if ext_text:
+                                        if len(ext_text) > 15000:
+                                            ext_text = ext_text[:15000] + "\n... [PDF content truncated to fit context limit]"
+                                        file_text = f"[Attached PDF Content: {f_name}]\n{ext_text}\n"
+                                elif f_type == ".docx":
+                                    ext_text = extract_text_from_docx(f_path)
+                                    if ext_text:
+                                        file_text = f"[Attached File Content: {f_name}]\n{ext_text}\n"
+                                elif f_type not in [".png", ".jpg", ".jpeg", ".webp"]:
+                                    try:
+                                        with open(f_path, "rb") as f_bin:
+                                            ext_text = f_bin.read().decode("utf-8", errors="ignore")
+                                        lang = f_type.replace(".", "")
+                                        file_text = f"[Attached File Content: {f_name}]\n```{lang}\n{ext_text}\n```\n"
+                                    except Exception:
+                                        pass
+                if file_text:
+                    text_str = f"{file_text}\n\n{text_str}".strip() if text_str else file_text.strip()
             if text_str and role != last_role:
                 history_turns.append({
                     "role": role,
@@ -3911,6 +3946,8 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     }
     if request.file:
         user_msg["file"] = request.file
+        if file_text_context:
+            user_msg["file_text"] = file_text_context
     active_chat["messages"].append(user_msg)
 
     # Automatically rename New Chat
