@@ -1,8 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Depends, Request, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from bson import ObjectId, errors as bson_errors
 import httpx
 import sys
 import io
@@ -24,6 +26,7 @@ import jwt
 from typing import Optional, List
 from app.core.config import settings
 from app.database import (
+    database,
     users_collection,
     chats_collection,
     subscriptions_collection,
@@ -4017,6 +4020,49 @@ def get_request_base_url(req: Optional[Request] = None) -> str:
         return str(req.base_url).rstrip("/")
     return "http://127.0.0.1:8000"
 
+def get_gridfs_bucket() -> Optional[AsyncIOMotorGridFSBucket]:
+    if database is not None:
+        try:
+            return AsyncIOMotorGridFSBucket(database, bucket_name="generated_images")
+        except Exception as e:
+            print("[GridFS get_gridfs_bucket error]:", e)
+    return None
+
+@app.get("/api/generated-images/{file_id}")
+async def get_generated_image_endpoint(file_id: str):
+    try:
+        oid = ObjectId(file_id)
+    except (bson_errors.InvalidId, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid image ID format")
+
+    grid_fs = get_gridfs_bucket()
+    if not grid_fs:
+        raise HTTPException(status_code=503, detail="Image storage service unavailable")
+
+    try:
+        grid_out = await grid_fs.open_download_stream(oid)
+        metadata = getattr(grid_out, "metadata", {}) or {}
+        content_type = metadata.get("content_type", "image/jpeg") if isinstance(metadata, dict) else "image/jpeg"
+
+        async def stream_generator():
+            while True:
+                chunk = await grid_out.readchunk()
+                if not chunk:
+                    break
+                yield chunk
+
+        headers = {
+            "Cache-Control": "public, max-age=31536000, immutable"
+        }
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type=content_type,
+            headers=headers
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image file not found")
+
 @app.post("/api/image/generate")
 async def generate_image_endpoint(request: ImageGenerateRequest, req: Request, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
@@ -4061,10 +4107,34 @@ async def generate_image_endpoint(request: ImageGenerateRequest, req: Request, a
         async with httpx.AsyncClient() as client:
             res = await client.get(url, timeout=40.0)
         if res.status_code == 200:
-            with open(filepath, "wb") as f:
-                f.write(res.content)
+            try:
+                with open(filepath, "wb") as f:
+                    f.write(res.content)
+            except Exception as e:
+                print("[Local Image Cache Save Error]:", e)
+
             base_url = get_request_base_url(req)
-            image_url = f"{base_url}/static/generated_images/{filename}"
+            image_url = None
+
+            grid_fs = get_gridfs_bucket()
+            if grid_fs:
+                try:
+                    file_id = await grid_fs.upload_from_stream(
+                        filename=filename,
+                        source=res.content,
+                        metadata={
+                            "prompt": request.prompt.strip(),
+                            "user_id": user["sub"],
+                            "content_type": "image/jpeg",
+                            "created_at": datetime.datetime.utcnow().isoformat()
+                        }
+                    )
+                    image_url = f"{base_url}/api/generated-images/{str(file_id)}"
+                except Exception as e:
+                    print("[GridFS Upload Error]:", e)
+
+            if not image_url:
+                image_url = f"{base_url}/static/generated_images/{filename}"
             
             chats = load_chats()
             active_chat = None
