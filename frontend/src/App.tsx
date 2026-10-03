@@ -915,42 +915,32 @@ export default function App() {
       const resolvedUrl = resolveImageUrl(imageUrl);
       if (!resolvedUrl) return;
 
+      if (resolvedUrl.includes('/api/generated-images/')) {
+        const downloadUrl = resolvedUrl.endsWith('/download') ? resolvedUrl : `${resolvedUrl}/download`;
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = filename || "generated-image.jpg";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+
       const response = await fetch(resolvedUrl);
       if (!response.ok) {
         throw new Error(`Image download failed: ${response.status}`);
       }
       const blob = await response.blob();
-
-      let ext = '';
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("image/png")) {
-        ext = ".png";
-      } else if (contentType.includes("image/webp")) {
-        ext = ".webp";
-      } else if (contentType.includes("image/jpeg") || contentType.includes("image/jpg")) {
-        ext = ".jpg";
-      }
-
-      let finalFilename = filename || "generated-image.jpg";
-      if (ext) {
-        const dotIndex = finalFilename.lastIndexOf('.');
-        if (dotIndex > 0) {
-          finalFilename = finalFilename.substring(0, dotIndex) + ext;
-        } else {
-          finalFilename = finalFilename + ext;
-        }
-      }
-
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = finalFilename;
+      a.download = filename || "generated-image.jpg";
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => {
         window.URL.revokeObjectURL(blobUrl);
-      }, 2000);
+      }, 5000);
     } catch (error) {
       console.error("Failed to download image:", error);
     }

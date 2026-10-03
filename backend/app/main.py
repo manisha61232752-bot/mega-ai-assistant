@@ -4028,6 +4028,50 @@ def get_gridfs_bucket() -> Optional[AsyncIOMotorGridFSBucket]:
             print("[GridFS get_gridfs_bucket error]:", e)
     return None
 
+@app.get("/api/generated-images/{file_id}/download")
+async def download_generated_image_endpoint(file_id: str):
+    try:
+        oid = ObjectId(file_id)
+    except (bson_errors.InvalidId, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid image ID format")
+
+    grid_fs = get_gridfs_bucket()
+    if not grid_fs:
+        raise HTTPException(status_code=503, detail="Image storage service unavailable")
+
+    try:
+        grid_out = await grid_fs.open_download_stream(oid)
+        metadata = getattr(grid_out, "metadata", {}) or {}
+        content_type = metadata.get("content_type", "image/jpeg") if isinstance(metadata, dict) else "image/jpeg"
+
+        async def stream_generator():
+            while True:
+                chunk = await grid_out.readchunk()
+                if not chunk:
+                    break
+                yield chunk
+
+        ext = ".jpg"
+        if "png" in content_type.lower():
+            ext = ".png"
+        elif "webp" in content_type.lower():
+            ext = ".webp"
+
+        filename = f"generated-image-{file_id}{ext}"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+
+        return StreamingResponse(
+            stream_generator(),
+            media_type=content_type,
+            headers=headers
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image file not found")
+
 @app.get("/api/generated-images/{file_id}")
 async def get_generated_image_endpoint(file_id: str):
     try:
