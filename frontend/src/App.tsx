@@ -912,22 +912,45 @@ export default function App() {
 
   const handleDownloadImage = async (imageUrl: string, filename: string) => {
     try {
-      const response = await fetch(imageUrl);
+      const resolvedUrl = resolveImageUrl(imageUrl);
+      if (!resolvedUrl) return;
+
+      const response = await fetch(resolvedUrl);
       if (!response.ok) {
         throw new Error(`Image download failed: ${response.status}`);
       }
       const blob = await response.blob();
+
+      let ext = '';
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("image/png")) {
+        ext = ".png";
+      } else if (contentType.includes("image/webp")) {
+        ext = ".webp";
+      } else if (contentType.includes("image/jpeg") || contentType.includes("image/jpg")) {
+        ext = ".jpg";
+      }
+
+      let finalFilename = filename || "generated-image.jpg";
+      if (ext) {
+        const dotIndex = finalFilename.lastIndexOf('.');
+        if (dotIndex > 0) {
+          finalFilename = finalFilename.substring(0, dotIndex) + ext;
+        } else {
+          finalFilename = finalFilename + ext;
+        }
+      }
+
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
-      a.download = filename;
+      a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.error("Image download failed:", error);
-      window.open(imageUrl, "_blank", "noopener,noreferrer");
+      console.error("Failed to download image:", error);
     }
   };
 
@@ -9140,15 +9163,12 @@ export default function App() {
                                       <div className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold truncate">Input: {message.tool_info.input}</div>
                                       <img src={resolveImageUrl(message.tool_info.output)} alt={message.tool_info.name} className="max-w-[200px] h-auto object-contain rounded-lg border border-slate-200 dark:border-slate-800 bg-white p-1" />
                                       <div className="flex justify-end">
-                                        <a 
-                                          href={resolveImageUrl(message.tool_info.output)} 
-                                          download={`${message.tool_info.name.toLowerCase()}-${message.id}.png`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
+                                        <button 
+                                          onClick={() => handleDownloadImage(message.tool_info!.output, `${message.tool_info!.name.toLowerCase()}-${message.id}.png`)}
                                           className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-650 dark:text-indigo-450 hover:underline cursor-pointer"
                                         >
                                           Download Asset
-                                        </a>
+                                        </button>
                                       </div>
                                     </div>
                                   )}
