@@ -898,6 +898,18 @@ export default function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+  const resolveImageUrl = (url: string | undefined): string => {
+    if (!url) return '';
+    if (url.startsWith('http://127.0.0.1:8000') || url.startsWith('http://localhost:8000')) {
+      const path = url.replace(/^https?:\/\/[^\/]+/, '');
+      return `${apiUrl}${path}`;
+    }
+    if (url.startsWith('/')) {
+      return `${apiUrl}${url}`;
+    }
+    return url;
+  };
+
   // Global click-outside-to-close behavior
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -9075,13 +9087,13 @@ export default function App() {
                               {message.image_url && (
                                 <div className="mt-2.5 rounded-xl overflow-hidden border border-slate-250 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-1.5 shadow-sm max-w-sm animate-fade-in">
                                   <img 
-                                    src={message.image_url} 
+                                    src={resolveImageUrl(message.image_url)} 
                                     alt="Generated Image" 
                                     className="w-full h-auto object-cover rounded-lg border border-slate-200/60 dark:border-slate-800 hover:scale-[1.01] transition-transform duration-200" 
                                   />
                                   <div className="p-1.5 flex justify-end">
                                     <a 
-                                      href={message.image_url} 
+                                      href={resolveImageUrl(message.image_url)} 
                                       download={`generated-image-${message.id}.png`}
                                       target="_blank"
                                       rel="noopener noreferrer"
@@ -9108,10 +9120,10 @@ export default function App() {
                                   {message.tool_info.type === 'image' && (
                                     <div className="space-y-2">
                                       <div className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold truncate">Input: {message.tool_info.input}</div>
-                                      <img src={message.tool_info.output} alt={message.tool_info.name} className="max-w-[200px] h-auto object-contain rounded-lg border border-slate-200 dark:border-slate-800 bg-white p-1" />
+                                      <img src={resolveImageUrl(message.tool_info.output)} alt={message.tool_info.name} className="max-w-[200px] h-auto object-contain rounded-lg border border-slate-200 dark:border-slate-800 bg-white p-1" />
                                       <div className="flex justify-end">
                                         <a 
-                                          href={message.tool_info.output} 
+                                          href={resolveImageUrl(message.tool_info.output)} 
                                           download={`${message.tool_info.name.toLowerCase()}-${message.id}.png`}
                                           target="_blank"
                                           rel="noopener noreferrer"

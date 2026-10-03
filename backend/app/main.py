@@ -4009,8 +4009,16 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         "tool_info": tool_info
     }
 
+def get_request_base_url(req: Optional[Request] = None) -> str:
+    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if public_url:
+        return public_url.rstrip("/")
+    if req and hasattr(req, "base_url") and req.base_url:
+        return str(req.base_url).rstrip("/")
+    return "http://127.0.0.1:8000"
+
 @app.post("/api/image/generate")
-async def generate_image_endpoint(request: ImageGenerateRequest, authorization: Optional[str] = Header(None)):
+async def generate_image_endpoint(request: ImageGenerateRequest, req: Request, authorization: Optional[str] = Header(None)):
     user = await get_current_user(authorization)
     
     # Check limit before calling pollinations API
@@ -4055,7 +4063,8 @@ async def generate_image_endpoint(request: ImageGenerateRequest, authorization: 
         if res.status_code == 200:
             with open(filepath, "wb") as f:
                 f.write(res.content)
-            image_url = f"http://127.0.0.1:8000/static/generated_images/{filename}"
+            base_url = get_request_base_url(req)
+            image_url = f"{base_url}/static/generated_images/{filename}"
             
             chats = load_chats()
             active_chat = None

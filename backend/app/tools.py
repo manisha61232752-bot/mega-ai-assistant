@@ -72,6 +72,12 @@ async def run_tool(query: str, images_dir: str) -> dict:
                 "type": "text"
             }
 
+def get_tools_base_url() -> str:
+    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if public_url:
+        return public_url.rstrip("/")
+    return "http://127.0.0.1:8000"
+
     # 3. QR Code Generator Tool
     qr_match = re.search(r'(?:generate\s+)?qr\s+code\s+(?:for\s+)?(.+)', q_clean, re.IGNORECASE)
     if qr_match:
@@ -86,7 +92,8 @@ async def run_tool(query: str, images_dir: str) -> dict:
             if res.status_code == 200:
                 with open(filepath, "wb") as f:
                     f.write(res.content)
-                image_url = f"http://127.0.0.1:8000/static/generated_images/{filename}"
+                base_url = get_tools_base_url()
+                image_url = f"{base_url}/static/generated_images/{filename}"
                 return {
                     "name": "QR Code Generator",
                     "input": data,
@@ -115,7 +122,8 @@ async def run_tool(query: str, images_dir: str) -> dict:
             if res.status_code == 200:
                 with open(filepath, "wb") as f:
                     f.write(res.content)
-                image_url = f"http://127.0.0.1:8000/static/generated_images/{filename}"
+                base_url = get_tools_base_url()
+                image_url = f"{base_url}/static/generated_images/{filename}"
                 return {
                     "name": "Barcode Generator",
                     "input": data,

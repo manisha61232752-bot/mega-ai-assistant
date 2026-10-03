@@ -477,6 +477,12 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
             save_tasks(tasks)
             outputs["productivity_tools"] = f"Created Task: '{title}'"
 
+def get_router_base_url() -> str:
+    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if public_url:
+        return public_url.rstrip("/")
+    return "http://127.0.0.1:8000"
+
     # 6. QR / Barcode / Converters
     if "qr_generator" in steps:
         data = calculated_val or msg_clean
@@ -490,7 +496,8 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
             if res.status_code == 200:
                 with open(filepath, "wb") as f:
                     f.write(res.content)
-                outputs["qr_generator"] = f"http://127.0.0.1:8000/static/generated_images/{filename}"
+                router_base_url = get_router_base_url()
+                outputs["qr_generator"] = f"{router_base_url}/static/generated_images/{filename}"
         except:
             pass
 
@@ -506,7 +513,8 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
             if res.status_code == 200:
                 with open(filepath, "wb") as f:
                     f.write(res.content)
-                outputs["barcode_generator"] = f"http://127.0.0.1:8000/static/generated_images/{filename}"
+                router_base_url = get_router_base_url()
+                outputs["barcode_generator"] = f"{router_base_url}/static/generated_images/{filename}"
         except:
             pass
 
