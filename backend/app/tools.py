@@ -7,9 +7,11 @@ import calendar
 import datetime
 import json
 
-def clean_math_expression(expr: str) -> str:
-    # Strictly allow only: digits, spaces, decimal dots, and math operators
-    return "".join(c for c in expr if c.isdigit() or c in "+-*/().* ")
+def get_tools_base_url() -> str:
+    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if public_url:
+        return public_url.rstrip("/")
+    return "http://127.0.0.1:8000"
 
 async def run_tool(query: str, images_dir: str) -> dict:
     """
@@ -71,12 +73,6 @@ async def run_tool(query: str, images_dir: str) -> dict:
                 "output": f"Failed to generate calendar: {e}",
                 "type": "text"
             }
-
-def get_tools_base_url() -> str:
-    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
-    if public_url:
-        return public_url.rstrip("/")
-    return "http://127.0.0.1:8000"
 
     # 3. QR Code Generator Tool
     qr_match = re.search(r'(?:generate\s+)?qr\s+code\s+(?:for\s+)?(.+)', q_clean, re.IGNORECASE)

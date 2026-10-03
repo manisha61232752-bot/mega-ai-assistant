@@ -13,6 +13,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMAGES_DIR = os.path.join(BASE_DIR, "static", "generated_images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
+def get_router_base_url() -> str:
+    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if public_url:
+        return public_url.rstrip("/")
+    return "http://127.0.0.1:8000"
+
 # 1. Dynamic Agent & Tool Registries
 AGENT_REGISTRY = {
     "general": {
@@ -476,12 +482,6 @@ async def execute_router_tools(user_id: str, intents: List[str], message: str, p
             tasks.insert(0, new_task)
             save_tasks(tasks)
             outputs["productivity_tools"] = f"Created Task: '{title}'"
-
-def get_router_base_url() -> str:
-    public_url = os.getenv("PUBLIC_URL") or os.getenv("RENDER_EXTERNAL_URL")
-    if public_url:
-        return public_url.rstrip("/")
-    return "http://127.0.0.1:8000"
 
     # 6. QR / Barcode / Converters
     if "qr_generator" in steps:
