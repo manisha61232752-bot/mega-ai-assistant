@@ -4717,7 +4717,7 @@ export default function App() {
         const trimmed = l.trim().toLowerCase();
         return (
           trimmed !== 'svg' &&
-          trimmed !== '<svg' &&
+          !trimmed.startsWith('<svg') &&
           trimmed !== '</svg>' &&
           trimmed !== 'svg/svg' &&
           trimmed !== 'general assistant' &&
@@ -4877,13 +4877,13 @@ export default function App() {
 
     // 11. Split lines into paragraphs BEFORE wrapping list containers
     html = html.split('\n').map(line => {
-      const l = line.trim();
-      if (l === '') return '<div class="h-1.5"></div>';
-      if (l.startsWith('<h') || l.startsWith('<li') || l.startsWith('<block') || l.startsWith('<hr') || l.startsWith('<div') || l.includes('%%CODEBLOCK') || l.includes('%%TABLEBLOCK')) {
+      const l = line.trim().toLowerCase();
+      if (l === '' || l === 'svg' || l === '&lt;svg&gt;' || l === '&lt;/svg&gt;' || l.startsWith('&lt;svg')) return '';
+      if (l.startsWith('<h') || l.startsWith('<li') || l.startsWith('<block') || l.startsWith('<hr') || l.startsWith('<div') || line.includes('%%CODEBLOCK') || line.includes('%%TABLEBLOCK')) {
         return line;
       }
       return `<p class="mb-2 text-slate-800 dark:text-slate-200 leading-relaxed">${line}</p>`;
-    }).join('\n');
+    }).filter(Boolean).join('\n');
 
     // 12. Wrap consecutive list items in <ol> or <ul> AFTER line splitting
     html = html.replace(/(<li class="ol-item[^"]*">[\s\S]*?<\/li>\n?)+/g, (match) => {

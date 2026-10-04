@@ -1014,6 +1014,91 @@ def extract_text_from_pdf(filepath: str) -> str:
     text, _ = extract_pdf_content(filepath)
     return text
 
+def extract_assignment_checklist(pdf_text: str) -> dict:
+    """Extracts a structured checklist of sections and questions from assignment text."""
+    norm_text = re.sub(r'\s+', ' ', pdf_text).strip()
+    sec_matches = list(re.finditer(r'(SECTION\s+[A-Z0-9]+[^\n]*?|\bPART\s+[A-Z0-9]+[^\n]*?|\bUNIT\s+[A-Z0-9]+[^\n]*?)(?=(?:\s+SECTION|\s+PART|\s+UNIT|$))', norm_text, re.IGNORECASE))
+    
+    sections = {}
+    if sec_matches:
+        for idx, m in enumerate(sec_matches):
+            sec_header = m.group(1).strip()
+            clean_sec = re.sub(r'\s*\(.*', '', sec_header).strip().upper()
+            clean_sec = re.sub(r'\s*\b1\..*', '', clean_sec).strip()
+            end_pos = sec_matches[idx+1].start() if idx+1 < len(sec_matches) else len(norm_text)
+            sec_content = norm_text[m.start():end_pos]
+            q_matches = list(re.finditer(r'(?:^|\s)(\d+)[\.\)]\s*(.*?)(?=(?:\s+\d+[\.\)]|$))', sec_content))
+            q_nums = [q.group(1) for q in q_matches]
+            sections[clean_sec] = q_nums
+            
+    total_q = sum(len(qs) for qs in sections.values())
+    return {
+        "sections": sections,
+        "total_questions": total_q
+    }
+
+def sanitize_pdf_assignment_response(text: str) -> str:
+    """Sanitizes AI response to remove accidental SVG XML, ```svg fences, standalone svg lines, and unclosed code blocks."""
+    if not text:
+        return text
+        
+    cleaned = text
+    
+    # 1. Replace ```svg code fence headers with ```text
+    cleaned = re.sub(r'```svg\b', '```text', cleaned, flags=re.IGNORECASE)
+    
+    # 2. Remove raw <svg ...> ... </svg> XML elements if AI generated raw SVG XML
+    cleaned = re.sub(r'<svg\b[^>]*>[\s\S]*?</svg>', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'</?svg[^>]*>', '', cleaned, flags=re.IGNORECASE)
+    
+    # 3. Filter out lines consisting ONLY of "svg" or standalone "svg" artifacts (without deleting normal words)
+    lines = cleaned.split('\n')
+    filtered_lines = []
+    for line in lines:
+        stripped = line.strip().lower()
+        if stripped in ['svg', '<svg>', '</svg>', '<svg', '</svg', 'svg/svg', '```svg'] or stripped.startswith('<svg'):
+            continue
+        filtered_lines.append(line)
+    cleaned = '\n'.join(filtered_lines)
+    
+    # 4. Safely auto-close unclosed code fence if odd ``` count
+    if cleaned.count('```') % 2 != 0:
+        cleaned += '\n```'
+        
+    return cleaned
+
+def check_missing_assignment_sections(reply_text: str, checklist: dict) -> list:
+    """Checks which detected assignment sections/questions are missing from the generated response."""
+    if not checklist or not checklist.get("sections"):
+        return []
+        
+    upper_reply = reply_text.upper()
+    missing_sections = []
+    
+    for sec_name, q_nums in checklist["sections"].items():
+        sec_key = sec_name.split('(')[0].strip()
+        sec_present = sec_key in upper_reply
+        
+        if not sec_present:
+            if "SECTION C" in sec_key and any(kw in upper_reply for kw in ["FRACTIONAL", "KNAPSACK", "QUEEN", "STATE SPACE", "DYNAMIC PROGRAMMING"]):
+                sec_present = True
+                
+        if not sec_present:
+            missing_sections.append(f"{sec_name} (Questions Q1 to Q{len(q_nums) if q_nums else 3})")
+            continue
+
+        missing_q = []
+        if q_nums:
+            for qn in q_nums:
+                pat = rf'\b(?:Q{qn}|QUESTION\s+{qn})\b'
+                if not re.search(pat, reply_text, re.IGNORECASE):
+                    missing_q.append(f"Q{qn}")
+                    
+        if missing_q and len(missing_q) == len(q_nums):
+            missing_sections.append(f"{sec_name} (Missing questions: {', '.join(missing_q)})")
+            
+    return missing_sections
+
 def build_assignment_manifest_directives(filename: str, pdf_text: str) -> str:
     norm_text = re.sub(r'\s+', ' ', pdf_text).strip()
     sec_matches = list(re.finditer(r'(SECTION\s+[A-Z0-9]+[^\n]*?|\bPART\s+[A-Z0-9]+[^\n]*?|\bUNIT\s+[A-Z0-9]+[^\n]*?)(?=(?:\s+SECTION|\s+PART|\s+UNIT|$))', norm_text, re.IGNORECASE))
@@ -3649,6 +3734,8 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     parts = []
     file_text_context = ""
     is_scanned_pdf_request = False
+    is_assignment_doc = False
+    assignment_checklist = {}
     
     # Process attached file metadata
     if request.file:
@@ -3712,6 +3799,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                     "solve", "marks", "weightage", "question paper", "test paper", "exam", "unit i", "unit ii"
                 ])
                 if is_assignment_doc:
+                    assignment_checklist = extract_assignment_checklist(extracted_pdf_text)
                     pdf_prompt += build_assignment_manifest_directives(filename, extracted_pdf_text)
             else:
                 if page_images:
@@ -4183,6 +4271,62 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     reply_text = ai_result.get("text", "AI provider is temporarily unavailable.")
     is_gemini_error = ai_result.get("error", False)
     provider_used = ai_result.get("provider", "")
+
+    # Validation & Completion logic for Assignment PDF Documents
+    if is_assignment_doc and not is_gemini_error and reply_text:
+        reply_text = sanitize_pdf_assignment_response(reply_text)
+        missing_secs = check_missing_assignment_sections(reply_text, assignment_checklist)
+        if missing_secs:
+            print(f"[PDF ASSIGNMENT VALIDATION] Missing section(s)/question(s) detected: {missing_secs}. Running targeted continuation...", flush=True)
+            missing_str = "\n".join(f"- {ms}" for ms in missing_secs)
+            cont_prompt = f"""[Educational Assignment Solution Completion Task]
+Document: {filename if 'filename' in locals() else 'Assignment'}
+User Query: {request.message}
+
+The initial solution answered earlier sections, but the following required sections/questions are missing:
+{missing_str}
+
+Please generate complete solutions ONLY for the missing section(s) and question(s) listed above.
+Guidelines:
+1. Retain original section headings and question numbering.
+2. For 7-11 mark questions (Section C), include complete derivations, step-by-step mathematical working, tabular DP values, and ASCII text trees inside ```text code blocks.
+3. Do not output raw SVG XML tags or ```svg code fence headers.
+4. Do not repeat questions that were already answered in the initial response.
+"""
+            cont_payload = {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": file_text_context if file_text_context else request.message},
+                            {"text": cont_prompt}
+                        ]
+                    }
+                ],
+                "systemInstruction": payload.get("systemInstruction")
+            }
+            
+            cont_result = await global_ai_orchestrator.generate_with_resilience(
+                req_id=f"{req_id}-cont",
+                user_id=user["sub"],
+                prompt=request.message,
+                payload=cont_payload,
+                is_personalized=is_personalized_ctx
+            )
+            
+            cont_text = cont_result.get("text", "")
+            cont_err = cont_result.get("error", False)
+            
+            if not cont_err and cont_text and len(cont_text.strip()) > 50:
+                cont_clean = sanitize_pdf_assignment_response(cont_text)
+                reply_text = reply_text.strip() + "\n\n" + cont_clean.strip()
+                reply_text = sanitize_pdf_assignment_response(reply_text)
+            elif cont_err:
+                reply_text = "The AI provider encountered a temporary issue while completing all sections of the assignment. Please try again shortly."
+                is_gemini_error = True
+
+    if is_assignment_doc:
+        reply_text = sanitize_pdf_assignment_response(reply_text)
 
     # Requirement 9 & 10: If a scanned/handwritten PDF request failed or fell back to text-only Groq provider,
     # inform user clearly that vision AI is required and temporarily unavailable.

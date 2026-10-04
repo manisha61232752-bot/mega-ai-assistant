@@ -231,69 +231,107 @@ class GeminiProvider(BaseAIProvider):
             )
 
         clean_model = self._normalize_model(settings.GEMINI_MODEL)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}"
+        candidate_models = [clean_model]
+        for fallback in ["gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.6-flash"]:
+            if fallback != clean_model and fallback not in candidate_models:
+                candidate_models.append(fallback)
 
+        last_res = None
         start_time = time.time()
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                res = await client.post(url, json=payload)
-            
-            latency = time.time() - start_time
-            if res.status_code == 200:
-                data = res.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return {
-                    "text": text,
-                    "provider": self.name,
-                    "model": clean_model,
-                    "latency": round(latency, 2),
-                    "raw_response": data
-                }
+        
+        for m in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    res = await client.post(url, json=payload)
+                last_res = res
+                latency = time.time() - start_time
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    candidates = data.get("candidates", [])
+                    text = ""
+                    finish_reason = ""
+                    if candidates:
+                        first_cand = candidates[0]
+                        finish_reason = first_cand.get("finishReason", "")
+                        content_obj = first_cand.get("content", {})
+                        parts = content_obj.get("parts", []) if isinstance(content_obj, dict) else []
+                        if parts:
+                            text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p).strip()
 
-            # Error handling
-            category, is_retryable = classify_ai_error(status_code=res.status_code)
-            body_snippet = mask_secrets(res.text[:300])
-            err_msg = f"Gemini API returned HTTP {res.status_code} ({category.value}): {body_snippet}"
-            raise AIProviderError(
-                message=err_msg,
-                provider=self.name,
-                status_code=res.status_code,
-                category=category,
-                is_retryable=is_retryable
-            )
+                    if text:
+                        return {
+                            "text": text,
+                            "provider": self.name,
+                            "model": m,
+                            "latency": round(latency, 2),
+                            "raw_response": data
+                        }
 
-        except httpx.TimeoutException as exc:
-            category, is_retryable = classify_ai_error(exception=exc)
-            raise AIProviderError(
-                message=f"Gemini API request timed out after {timeout}s",
-                provider=self.name,
-                status_code=None,
-                category=category,
-                is_retryable=is_retryable
-            ) from exc
+                    if finish_reason == "SAFETY":
+                        raise AIProviderError(
+                            message="Gemini model safety filter triggered.",
+                            provider=self.name,
+                            status_code=200,
+                            category=AIErrorCategory.FORBIDDEN,
+                            is_retryable=False
+                        )
 
-        except httpx.NetworkError as exc:
-            category, is_retryable = classify_ai_error(exception=exc)
-            raise AIProviderError(
-                message=f"Gemini network transport failure: {str(exc)}",
-                provider=self.name,
-                status_code=None,
-                category=category,
-                is_retryable=is_retryable
-            ) from exc
+                    raise AIProviderError(
+                        message=f"Gemini API returned empty text output (finishReason: {finish_reason or 'UNKNOWN'}).",
+                        provider=self.name,
+                        status_code=200,
+                        category=AIErrorCategory.SERVER_ERROR,
+                        is_retryable=True
+                    )
+                
+                if res.status_code == 429:
+                    logger.warning(f"Gemini model {m} returned 429 rate limit. Trying candidate fallback model if available...")
+                    continue
+                else:
+                    break
+            except AIProviderError:
+                raise
+            except httpx.TimeoutException as exc:
+                category, is_retryable = classify_ai_error(exception=exc)
+                if m == candidate_models[-1]:
+                    raise AIProviderError(
+                        message=f"Gemini API request timed out after {timeout}s",
+                        provider=self.name,
+                        status_code=None,
+                        category=category,
+                        is_retryable=is_retryable
+                    ) from exc
+                continue
+            except httpx.NetworkError as exc:
+                category, is_retryable = classify_ai_error(exception=exc)
+                if m == candidate_models[-1]:
+                    raise AIProviderError(
+                        message=f"Gemini network transport failure: {str(exc)}",
+                        provider=self.name,
+                        status_code=None,
+                        category=category,
+                        is_retryable=is_retryable
+                    ) from exc
+                continue
+            except Exception as exc:
+                if m == candidate_models[-1]:
+                    raise exc
+                continue
 
-        except AIProviderError:
-            raise
-
-        except Exception as exc:
-            category, is_retryable = classify_ai_error(exception=exc)
-            raise AIProviderError(
-                message=f"Gemini unexpected error: {str(exc)}",
-                provider=self.name,
-                status_code=None,
-                category=category,
-                is_retryable=is_retryable
-            ) from exc
+        res = last_res
+        # Error handling
+        category, is_retryable = classify_ai_error(status_code=res.status_code if res else None)
+        body_snippet = mask_secrets(res.text[:300] if res else "")
+        err_msg = f"Gemini API returned HTTP {res.status_code if res else 'ERROR'} ({category.value}): {body_snippet}"
+        raise AIProviderError(
+            message=err_msg,
+            provider=self.name,
+            status_code=res.status_code if res else None,
+            category=category,
+            is_retryable=is_retryable
+        )
 
 
 class OpenAICompatibleFallbackProvider(BaseAIProvider):
