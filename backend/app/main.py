@@ -891,22 +891,41 @@ def extract_text_from_docx(filepath: str) -> str:
 def extract_pdf_content(filepath: str) -> tuple:
     """
     Extracts text and page images from a PDF file.
-    Uses pypdf for text extraction, and PyMuPDF (pymupdf) for rendering scanned/handwritten pages.
+    Calculates per-page meaningful text density (filtering out scanner headers/watermarks).
+    If average text density < 200 chars/page, PyMuPDF renders pages to JPEG image parts.
     Returns (extracted_text: str, page_images: list[dict])
     """
     extracted_text = ""
     page_images = []
+    page_count = 1
+    page_texts = []
+
+    def clean_scanner_noise(text: str) -> str:
+        if not text:
+            return ""
+        noise_patterns = [
+            r'scanned\s+by\s+camscanner',
+            r'camscanner',
+            r'adobe\s+scan',
+            r'microsoft\s+lens',
+            r'page\s+\d+\s+of\s+\d+',
+            r'scanned\s+with\s+\w+',
+            r'document\s+scanner'
+        ]
+        cleaned = text
+        for pat in noise_patterns:
+            cleaned = re.sub(pat, '', cleaned, flags=re.IGNORECASE)
+        return cleaned.strip()
 
     # 1. Primary Text Extraction via pypdf
     try:
         from pypdf import PdfReader
         reader = PdfReader(filepath)
-        extracted = []
+        page_count = max(1, len(reader.pages))
         for page in reader.pages:
-            t = page.extract_text()
-            if t:
-                extracted.append(t)
-        extracted_text = "\n".join(extracted).strip()
+            t = page.extract_text() or ""
+            page_texts.append(t)
+        extracted_text = "\n".join(page_texts).strip()
     except Exception as e:
         print("[PDF Text Extraction Warning (pypdf)]:", e)
 
@@ -930,8 +949,13 @@ def extract_pdf_content(filepath: str) -> tuple:
         except Exception as fe:
             print("[PDF Fallback Text Extraction Warning]:", fe)
 
-    # 3. Scanned / Handwritten Page Rendering via PyMuPDF if low/no text
-    if not extracted_text or len(extracted_text.strip()) < 50:
+    # 3. Calculate Page-Level Text Density (filtering scanner noise)
+    meaningful_text = clean_scanner_noise(extracted_text)
+    meaningful_char_count = len(meaningful_text)
+    avg_chars_per_page = meaningful_char_count / page_count
+
+    # Trigger PyMuPDF page rendering if avg text density < 200 chars/page OR meaningful text < 100 chars
+    if avg_chars_per_page < 200 or meaningful_char_count < 100:
         try:
             try:
                 import pymupdf as fitz
@@ -940,6 +964,7 @@ def extract_pdf_content(filepath: str) -> tuple:
             import base64
 
             doc = fitz.open(filepath)
+            page_count = max(page_count, len(doc))
             MAX_RENDER_PAGES = 20
             for i, page in enumerate(doc):
                 if i >= MAX_RENDER_PAGES:
