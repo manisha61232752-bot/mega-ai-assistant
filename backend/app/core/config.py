@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     FALLBACK_API_BASE_URL: str = "https://api.openai.com/v1"
     
     AI_MAX_RETRIES: int = 2
-    AI_REQUEST_TIMEOUT_SECONDS: float = 30.0
+    AI_REQUEST_TIMEOUT_SECONDS: float = 60.0
     AI_PROVIDER_COOLDOWN_SECONDS: float = 30.0
     AI_CACHE_ENABLED: bool = True
     AI_CACHE_TTL_SECONDS: int = 300

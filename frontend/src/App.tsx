@@ -3637,10 +3637,11 @@ export default function App() {
       })
       .then((data) => {
         setIsTyping(false);
+        const replyContent = (data.reply && data.reply.trim()) ? data.reply : "The AI provider was unable to generate a complete response right now. Please try again in a moment.";
         const botMessage: Message = {
           id: Math.random().toString(),
           sender: 'bot',
-          text: data.reply || "No response received.",
+          text: replyContent,
           timestamp: new Date(),
           used_sources: data.used_sources || undefined,
           agent: data.agent || undefined,
@@ -3662,7 +3663,7 @@ export default function App() {
         );
         fetchProductivityData();
         if (isFromVoice || isVoiceResponseEnabled || shouldSpeakNext) {
-          speakVoiceResponse(data.reply || "No response received.");
+          speakVoiceResponse(replyContent);
           setShouldSpeakNext(false);
         }
       })

@@ -4201,6 +4201,9 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     user_id_short = user.get("sub", "anon")[:8]
     print(f"[CHAT LOG] Req ID: {req_id} | User ID: {user_id_short} | Category: {agent_name} | Gemini Calls: {gemini_calls_count} | Model: {settings.GEMINI_MODEL} | Latency: {req_latency:.2f}s", flush=True)
 
+    if not reply_text or not reply_text.strip():
+        reply_text = "The AI provider was unable to generate a complete response right now. Please try again in a moment."
+
     return {
         "reply": reply_text,
         "sources": sources if sources else None,
