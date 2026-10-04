@@ -52,3 +52,6 @@ backend/scratch_test_*.py
 backend/app/webhook_debug.txt
 backend/*_results.json
 
+# Local / generated deployment & test outputs
+.vercel/
+test-results/

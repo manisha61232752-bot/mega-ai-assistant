@@ -1014,6 +1014,43 @@ def extract_text_from_pdf(filepath: str) -> str:
     text, _ = extract_pdf_content(filepath)
     return text
 
+def build_assignment_manifest_directives(filename: str, pdf_text: str) -> str:
+    norm_text = re.sub(r'\s+', ' ', pdf_text).strip()
+    sec_matches = list(re.finditer(r'(SECTION\s+[A-Z0-9]+[^\n]*?|\bPART\s+[A-Z0-9]+[^\n]*?|\bUNIT\s+[A-Z0-9]+[^\n]*?)(?=(?:\s+SECTION|\s+PART|\s+UNIT|$))', norm_text, re.IGNORECASE))
+
+    section_summary = []
+    if sec_matches:
+        for idx, m in enumerate(sec_matches):
+            sec_header = m.group(1).strip()
+            clean_sec = re.sub(r'\s*\b1\..*', '', sec_header).strip()
+            end_pos = sec_matches[idx+1].start() if idx+1 < len(sec_matches) else len(norm_text)
+            sec_content = norm_text[m.start():end_pos]
+            q_matches = list(re.finditer(r'(?:^|\s)(\d+)[\.\)]\s*(.*?)(?=(?:\s+\d+[\.\)]|$))', sec_content))
+            q_nums = [q.group(1) for q in q_matches]
+            if q_nums:
+                section_summary.append(f"- {clean_sec}: {len(q_nums)} Question(s) (Q" + ", Q".join(q_nums) + ")")
+            else:
+                section_summary.append(f"- {clean_sec}")
+
+    manifest_str = "\n".join(section_summary) if section_summary else "- Document Questions & Sections detected."
+
+    directives = f"""\n[MANDATORY DOCUMENT ASSIGNMENT ANSWERING DIRECTIVE]
+Question Paper Manifest & Required Section Checklist:
+{manifest_str}
+
+COMPLETENESS & MARKS-PROPORTIONAL ANSWERING DIRECTIVES:
+1. MANDATORY COMPLETE COVERAGE: You MUST read the entire PDF and answer EVERY SINGLE QUESTION across ALL detected sections in full sequential order from first section to last. Do NOT stop early or truncate later sections.
+2. ALL SECTIONS & LATER QUESTIONS: High-weightage questions in later sections (e.g., Section C / Part C) MUST be fully answered with complete step-by-step mathematical working, calculations, algorithms, and tabular DP values.
+3. MARKS-PROPORTIONAL DEPTH:
+   - Short Mark Questions (1-5 Marks): Keep answers concise (2-4 sentences / key points per question) to conserve output token budget for long questions.
+   - Medium/Long Mark Questions (7-11 Marks): Provide complete step-by-step mathematical working, tabular values, and clean ASCII/markdown state-space trees.
+4. FORMATTING RULES:
+   - Preserve original section headings and question numbering.
+   - For diagrams, trees, and state space (e.g., 4-Queens State Space Tree), use clean Markdown text trees inside ```text code blocks. NEVER output raw SVG XML tags (<svg>...) or use ```svg code fence headers.
+   - Do NOT omit any question or sub-part (i, ii, iii, a, b, c).
+"""
+    return directives
+
 # Auth Endpoints
 @app.post("/api/auth/register")
 async def register_endpoint(req: RegisterRequest):
@@ -3669,6 +3706,13 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
                 if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
                     extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
                 pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
+
+                is_assignment_doc = any(kw in (extracted_pdf_text + " " + request.message).lower() for kw in [
+                    "assignment", "section a", "section b", "section c", "part a", "part b", "question",
+                    "solve", "marks", "weightage", "question paper", "test paper", "exam", "unit i", "unit ii"
+                ])
+                if is_assignment_doc:
+                    pdf_prompt += build_assignment_manifest_directives(filename, extracted_pdf_text)
             else:
                 if page_images:
                     pdf_prompt = f"[Attached PDF Content: {filename} (Scanned/Handwritten Document - {num_rendered_images} page image(s) attached for visual analysis)]\n"

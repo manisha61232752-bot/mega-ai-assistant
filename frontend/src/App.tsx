@@ -4739,11 +4739,17 @@ export default function App() {
       .replace(/\\(>)/g, '$1')
       .replace(/\\([\[\]\(\)])/g, '$1');
 
+    // 2.5 Auto-close unclosed code block if total ``` count is odd
+    const backtickMatches = cleaned.match(/```/g);
+    if (backtickMatches && backtickMatches.length % 2 !== 0) {
+      cleaned += '\n```';
+    }
+
     // 3. Extract code blocks before paragraph splitting or HTML escaping
     const codeBlocks: string[] = [];
     cleaned = cleaned.replace(/```([a-zA-Z0-9_\-\+]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
       const rawLang = (lang || '').trim().toLowerCase();
-      const displayLang = rawLang === 'svg' ? 'xml' : (rawLang || 'code');
+      const displayLang = (rawLang === 'svg' || rawLang === 'xml') ? 'diagram' : (rawLang || 'code');
       
       const cleanCode = code.replace(/^(svg\s*)+/gi, '').trim();
       const escapedCode = cleanCode
