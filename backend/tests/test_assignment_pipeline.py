@@ -35,13 +35,7 @@ async def run_assignment_test():
     print(f"Section C Detected: {sec_c_match}")
     assert sec_a_match and sec_b_match and sec_c_match, "Failed to detect all sections"
 
-    prompt_instruction = (
-        "Read the complete PDF carefully.\n"
-        "Give me the solution of every assignment question in simple, easy and human language.\n"
-        "Follow the marks/weightage if mentioned in the PDF.\n"
-        "For programming/algorithm questions, include the algorithm, explanation, and example where required.\n"
-        "Do not skip any question."
-    )
+    prompt_instruction = "give me complete solution of this assignment questions"
 
     pdf_prompt = f"[Attached PDF Content: Assignment-2_DAA.pdf]\n{extracted_text}\n{directives}"
     payload = {
@@ -56,9 +50,11 @@ async def run_assignment_test():
         ]
     }
 
-    print("\n=== STEP 3 & 4: GENERATE ANSWERS & CHECK COMPLETENESS ===")
+    print("\n=== STEP 3 & 4: GENERATE ANSWERS & CHECK COMPLETENESS & SAFETY ===")
+    print("Waiting 45s for rate limit window to fully reset...")
+    await asyncio.sleep(45)
     res = {}
-    for attempt in range(1, 6):
+    for attempt in range(1, 3):
         global_health_tracker.record_success("gemini")
         res = await global_ai_orchestrator.generate_with_resilience(
             req_id=f"e2e-assignment-test-{attempt}",
@@ -69,13 +65,17 @@ async def run_assignment_test():
         )
         if not res.get("error") and len(res.get("text", "")) > 500:
             break
-        print(f"[RETRY] Attempt {attempt} returned error or rate limit. Waiting 10s...")
-        await asyncio.sleep(10)
+        print(f"[RETRY] Attempt {attempt} returned error or rate limit. Waiting 20s...")
+        await asyncio.sleep(20)
 
     ans = res.get("text", "")
     print(f"AI Provider Used: {res.get('provider')}")
     print(f"Response Character Count: {len(ans)}")
     print(f"Response Word Count: {len(ans.split())}")
+
+    # Safety refusal check
+    refusal_keywords = ["can't help", "cannot help", "sorry, but i can't", "sorry, but i cannot"]
+    has_refusal = any(ref_kw in ans.lower() for ref_kw in refusal_keywords)
 
     has_sec_a_ans = "SECTION A" in ans.upper() or "SECTION A" in ans
     has_sec_b_ans = "SECTION B" in ans.upper() or "SECTION B" in ans
@@ -91,7 +91,8 @@ async def run_assignment_test():
     has_standalone_svg = bool(re.search(r'^\s*svg\s*$', ans, re.MULTILINE | re.IGNORECASE))
     has_unclosed_code = (ans.count("```") % 2 != 0)
 
-    print(f"\nAnswer Section A Included: {has_sec_a_ans}")
+    print(f"\nSafety Refusal Triggered: {has_refusal}")
+    print(f"Answer Section A Included: {has_sec_a_ans}")
     print(f"Answer Section B Included: {has_sec_b_ans}")
     print(f"Answer Section C Included: {has_sec_c_ans}")
     print(f"Section C Q1 (Fractional Knapsack) Answered: {sec_c_q1_knapsack}")
@@ -102,6 +103,7 @@ async def run_assignment_test():
     print(f"Contains Standalone 'svg' Artifact: {has_standalone_svg}")
     print(f"Contains Unclosed Code Fences (Odd ```): {has_unclosed_code}")
 
+    assert not has_refusal, "AI model returned a safety refusal response"
     assert has_sec_a_ans and has_sec_b_ans and has_sec_c_ans, "Not all sections were answered"
     assert sec_c_q1_knapsack and sec_c_q2_queens and sec_c_q3_dp, "Section C questions missing"
     assert not has_raw_svg_tag, "Found raw <svg XML output"

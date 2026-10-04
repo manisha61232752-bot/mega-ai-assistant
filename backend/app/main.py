@@ -1034,20 +1034,20 @@ def build_assignment_manifest_directives(filename: str, pdf_text: str) -> str:
 
     manifest_str = "\n".join(section_summary) if section_summary else "- Document Questions & Sections detected."
 
-    directives = f"""\n[MANDATORY DOCUMENT ASSIGNMENT ANSWERING DIRECTIVE]
-Question Paper Manifest & Required Section Checklist:
+    directives = f"""\n[Educational Assignment Solution Guidance]
+Document Structure & Question Overview:
 {manifest_str}
 
-COMPLETENESS & MARKS-PROPORTIONAL ANSWERING DIRECTIVES:
-1. MANDATORY COMPLETE COVERAGE: You MUST read the entire PDF and answer EVERY SINGLE QUESTION across ALL detected sections in full sequential order from first section to last. Do NOT stop early or truncate later sections.
-2. ALL SECTIONS & LATER QUESTIONS: High-weightage questions in later sections (e.g., Section C / Part C) MUST be fully answered with complete step-by-step mathematical working, calculations, algorithms, and tabular DP values.
-3. MARKS-PROPORTIONAL DEPTH:
-   - Short Mark Questions (1-5 Marks): Keep answers concise (2-4 sentences / key points per question) to conserve output token budget for long questions.
-   - Medium/Long Mark Questions (7-11 Marks): Provide complete step-by-step mathematical working, tabular values, and clean ASCII/markdown state-space trees.
-4. FORMATTING RULES:
-   - Preserve original section headings and question numbering.
-   - For diagrams, trees, and state space (e.g., 4-Queens State Space Tree), use clean Markdown text trees inside ```text code blocks. NEVER output raw SVG XML tags (<svg>...) or use ```svg code fence headers.
-   - Do NOT omit any question or sub-part (i, ii, iii, a, b, c).
+Helpful Answering Guidelines:
+1. Complete Coverage: Read the entire uploaded document carefully and provide complete solutions for all questions across every section (Section A, Section B, Section C, etc.) from start to finish.
+2. Section & Question Preservation: Retain original section names and question numbering in your response.
+3. Answer Depth by Marks:
+   - Short Mark Questions (1-5 Marks): Provide concise, accurate answers (2-4 sentences or key bullet points) to keep responses focused.
+   - Long Mark Questions (7-11 Marks): Provide complete step-by-step derivations, calculations, algorithms, and tabular values.
+4. Formatting & Diagrams:
+   - For state space, trees, or diagrams, format using clean Markdown text inside ```text code blocks.
+   - Do not output raw SVG tags (<svg>...) or ```svg code fence headers.
+   - Answer all sub-parts cleanly without skipping.
 """
     return directives
 
