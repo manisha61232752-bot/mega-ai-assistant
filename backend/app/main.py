@@ -965,18 +965,24 @@ def extract_pdf_content(filepath: str) -> tuple:
 
             doc = fitz.open(filepath)
             page_count = max(page_count, len(doc))
-            MAX_RENDER_PAGES = 20
+            MAX_RENDER_PAGES = 6
             for i, page in enumerate(doc):
                 if i >= MAX_RENDER_PAGES:
                     break
-                pix = page.get_pixmap(dpi=150)
-                img_bytes = pix.tobytes("jpeg")
+                pix = page.get_pixmap(dpi=100)
+                try:
+                    img_bytes = pix.tobytes("jpeg", jpg_quality=75)
+                except Exception:
+                    img_bytes = pix.tobytes("jpeg")
                 b64_img = base64.b64encode(img_bytes).decode("utf-8")
                 page_images.append({
                     "mime_type": "image/jpeg",
                     "data": b64_img
                 })
             doc.close()
+            total_img_bytes = sum(len(p.get("data", "")) for p in page_images)
+            filename = os.path.basename(filepath)
+            print(f"[PDF SCANNED RENDERING] File: {filename} | Total Pages: {page_count} | Rendered Pages: {len(page_images)} | DPI: 100 | Quality: 75 | Image Format: image/jpeg | Payload Size: {total_img_bytes} B ({total_img_bytes / (1024*1024):.2f} MB)", flush=True)
         except Exception as me:
             print("[PDF Page Rendering Warning (PyMuPDF)]:", me)
 
@@ -3605,6 +3611,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     
     parts = []
     file_text_context = ""
+    is_scanned_pdf_request = False
     
     # Process attached file metadata
     if request.file:
@@ -3648,6 +3655,9 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
             num_rendered_images = len(page_images)
             total_img_bytes = sum(len(p.get("data", "")) for p in page_images)
             print(f"[PDF PROCESSING] File: {filename} | Extracted Text Length: {len(extracted_pdf_text)} | Rendered Page Images: {num_rendered_images} | Approx Base64 Bytes: {total_img_bytes}", flush=True)
+
+            if page_images and (not extracted_pdf_text or len(extracted_pdf_text.strip()) < 50):
+                is_scanned_pdf_request = True
 
             # Attach scanned page images if text extraction was empty/minimal
             if page_images:
@@ -4128,9 +4138,15 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     
     reply_text = ai_result.get("text", "AI provider is temporarily unavailable.")
     is_gemini_error = ai_result.get("error", False)
+    provider_used = ai_result.get("provider", "")
+
+    # Requirement 9 & 10: If a scanned/handwritten PDF request failed or fell back to text-only Groq provider,
+    # inform user clearly that vision AI is required and temporarily unavailable.
+    if is_scanned_pdf_request and (is_gemini_error or provider_used.startswith("fallback") or provider_used == "none"):
+        reply_text = "This PDF is scanned or handwritten, so it needs vision processing to read the pages. The vision AI service is temporarily unavailable right now. Please try again in a moment."
 
     # If error occurred but a local tool output was generated, present tool output cleanly
-    if is_gemini_error and tool_outputs:
+    if is_gemini_error and tool_outputs and not is_scanned_pdf_request:
         reply_parts = []
         for tk, tv in tool_outputs.items():
             reply_parts.append(f"{tk}: {tv}")
