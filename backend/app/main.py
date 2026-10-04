@@ -889,35 +889,28 @@ def extract_text_from_docx(filepath: str) -> str:
         return f"Error extracting text from DOCX document: {e}"
 
 def extract_pdf_content(filepath: str) -> tuple:
+    """
+    Extracts text and page images from a PDF file.
+    Uses pypdf for text extraction, and PyMuPDF (pymupdf) for rendering scanned/handwritten pages.
+    Returns (extracted_text: str, page_images: list[dict])
+    """
     extracted_text = ""
     page_images = []
+
+    # 1. Primary Text Extraction via pypdf
     try:
         from pypdf import PdfReader
-        import base64
         reader = PdfReader(filepath)
         extracted = []
-        for i, page in enumerate(reader.pages):
+        for page in reader.pages:
             t = page.extract_text()
             if t:
                 extracted.append(t)
-            if not t or len(t.strip()) < 50:
-                try:
-                    for img in page.images:
-                        img_bytes = img.data
-                        img_name = img.name.lower()
-                        mime = "image/png" if img_name.endswith(".png") else "image/jpeg"
-                        b64_img = base64.b64encode(img_bytes).decode("utf-8")
-                        page_images.append({"mime_type": mime, "data": b64_img})
-                        if len(page_images) >= 3:
-                            break
-                except Exception as ie:
-                    print(f"[PDF Image Extraction Warning page {i}]:", ie)
-            if len(page_images) >= 3:
-                break
         extracted_text = "\n".join(extracted).strip()
     except Exception as e:
-        print("[PDF Extraction Warning (pypdf)]:", e)
+        print("[PDF Text Extraction Warning (pypdf)]:", e)
 
+    # 2. Raw Stream Text Extraction Fallback if empty
     if not extracted_text:
         try:
             with open(filepath, "rb") as f:
@@ -936,6 +929,53 @@ def extract_pdf_content(filepath: str) -> tuple:
                     extracted_text = " ".join(decoded_snippets).strip()
         except Exception as fe:
             print("[PDF Fallback Text Extraction Warning]:", fe)
+
+    # 3. Scanned / Handwritten Page Rendering via PyMuPDF if low/no text
+    if not extracted_text or len(extracted_text.strip()) < 50:
+        try:
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
+            import base64
+
+            doc = fitz.open(filepath)
+            MAX_RENDER_PAGES = 20
+            for i, page in enumerate(doc):
+                if i >= MAX_RENDER_PAGES:
+                    break
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("jpeg")
+                b64_img = base64.b64encode(img_bytes).decode("utf-8")
+                page_images.append({
+                    "mime_type": "image/jpeg",
+                    "data": b64_img
+                })
+            doc.close()
+        except Exception as me:
+            print("[PDF Page Rendering Warning (PyMuPDF)]:", me)
+
+            # Fallback to pypdf embedded image extraction if PyMuPDF fails
+            if not page_images:
+                try:
+                    from pypdf import PdfReader
+                    import base64
+                    reader = PdfReader(filepath)
+                    for i, page in enumerate(reader.pages):
+                        if i >= 10:
+                            break
+                        for img in page.images:
+                            img_bytes = img.data
+                            img_name = img.name.lower()
+                            mime = "image/png" if img_name.endswith(".png") else "image/jpeg"
+                            b64_img = base64.b64encode(img_bytes).decode("utf-8")
+                            page_images.append({"mime_type": mime, "data": b64_img})
+                            if len(page_images) >= 10:
+                                break
+                        if len(page_images) >= 10:
+                            break
+                except Exception as ie:
+                    print("[PDF pypdf Image Fallback Warning]:", ie)
 
     return extracted_text, page_images
 
@@ -3580,21 +3620,25 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         elif file_type == ".pdf":
             extracted_pdf_text, page_images = extract_pdf_content(temp_filepath)
             
+            num_rendered_images = len(page_images)
+            total_img_bytes = sum(len(p.get("data", "")) for p in page_images)
+            print(f"[PDF PROCESSING] File: {filename} | Extracted Text Length: {len(extracted_pdf_text)} | Rendered Page Images: {num_rendered_images} | Approx Base64 Bytes: {total_img_bytes}", flush=True)
+
             # Attach scanned page images if text extraction was empty/minimal
             if page_images:
                 for img_part in page_images:
                     parts.append({"inline_data": img_part})
 
-            if extracted_pdf_text:
+            if extracted_pdf_text and len(extracted_pdf_text.strip()) >= 50:
                 MAX_PDF_TEXT_LEN = 15000
                 if len(extracted_pdf_text) > MAX_PDF_TEXT_LEN:
                     extracted_pdf_text = extracted_pdf_text[:MAX_PDF_TEXT_LEN] + "\n... [PDF content truncated to fit context limit]"
                 pdf_prompt = f"[Attached PDF Content: {filename}]\n{extracted_pdf_text}\n"
             else:
                 if page_images:
-                    pdf_prompt = f"[Attached PDF Content: {filename} (Scanned Document - Visual page content attached)]\n"
+                    pdf_prompt = f"[Attached PDF Content: {filename} (Scanned/Handwritten Document - {num_rendered_images} page image(s) attached for visual analysis)]\n"
                 else:
-                    pdf_prompt = f"[Attached PDF Content: {filename}]\n[Note: Unable to extract text stream from PDF file. Process document context accordingly.]\n"
+                    pdf_prompt = f"[Attached PDF Content: {filename}]\n[Note: Unable to extract text stream or render pages from PDF file. Process document context accordingly.]\n"
 
             file_text_context = pdf_prompt
             parts.append({"text": pdf_prompt})
